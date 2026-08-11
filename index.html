@@ -181,7 +181,9 @@
       <span class="sync" id="sync">—</span>
       <span class="sep"></span>
       <span class="bkstat" id="bkstat">No backup yet</span>
-      <button class="linkbtn" id="restoreBtn">Restore…</button>
+      <button class="linkbtn" id="backupBtn">Backup</button>
+      <button class="linkbtn" id="restoreBtn">Restore</button>
+      <input type="file" id="restoreFile" accept="application/json,.json" hidden>
       <label class="nl" for="editorName">You are</label>
       <input class="name" id="editorName" type="text" placeholder="your name" maxlength="24" spellcheck="false">
     </div>
@@ -339,7 +341,7 @@ const DEFAULT_MILESTONES=["Data Collection","Initiative Start","Model Developmen
 
 let hasStore=false, db=null, boardUnsub=null, nav={}, currentId=null, activePlant="BSL", state=null, knownRev=0, myName="",
     isEditing=false, pendingRemote=null, backups=[], lastSaved=null,
-    openPlants=new Set(), boardCache={}, bakCache={}, lastPop=null;
+    openPlants=new Set(), boardCache={}, bakCache={}, lastPop=null, lastBackupAt="";
 let uid=Math.floor(Math.random()*1e6);
 const nextId=()=>(uid++).toString(36)+Date.now().toString(36).slice(-3);
 
@@ -403,7 +405,7 @@ async function pushBackup(snap){
   if(hasStore) await sSet(bakKey(currentId),backups); else bakCache[currentId]=backups;
   updateBackupIndicator();
 }
-function updateBackupIndicator(){const el=document.getElementById("bkstat");if(el)el.textContent=backups.length?("Last backup "+backups[0].t):"No backup yet";}
+function updateBackupIndicator(){const el=document.getElementById("bkstat");if(el)el.textContent=lastBackupAt?("Last backup: "+lastBackupAt):"No backup yet";}
 
 /* ---------- save / navigation ---------- */
 function syncHash(){try{history.replaceState(null,"","#u="+encodeURIComponent(currentId||""));}catch(e){}}
@@ -668,26 +670,81 @@ function toast(msg){const t=document.getElementById("toast");t.textContent=msg;t
 document.addEventListener("click",e=>{if(!e.target.closest(".slot")&&!e.target.closest(".picker"))document.querySelectorAll(".picker.open").forEach(p=>p.classList.remove("open"));});
 
 /* ---------- restore ---------- */
+/* ---------- Backup (export all data) ---------- */
+async function doBackup(){
+  toast("Preparing backup…");
+  const ids=[]; PLANTS.forEach(p=>(nav[p]||[]).forEach(u=>ids.push(u.id)));
+  const data={app:"pravartanam-tracker",version:1,at:stamp(),index:nav,boards:{},backups:{}};
+  for(const id of ids){
+    if(hasStore){ const b=await sGet(boardKey(id)); if(b) data.boards[id]=b; const k=await sGet(bakKey(id)); if(k) data.backups[id]=k; }
+    else { if(boardCache[id]) data.boards[id]=boardCache[id]; if(bakCache[id]) data.backups[id]=bakCache[id]; }
+  }
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download="pravartanam-backup-"+stamp().replace(/[: ]/g,"-")+".json";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+  lastBackupAt=data.at;
+  if(hasStore) await sSet("meta/lastBackup",data.at);
+  updateBackupIndicator();
+  toast("Backup saved · "+data.at);
+}
+
+/* ---------- Restore ---------- */
 async function openRestore(){
   const panel=document.getElementById("restorePanel");
   if(!panel.hidden){panel.hidden=true;return;}
-  if(hasStore){const b=await sGet(bakKey(currentId));if(Array.isArray(b))backups=b;updateBackupIndicator();}
+  if(hasStore){const b=await sGet(bakKey(currentId));if(Array.isArray(b))backups=b;}
   renderRestore(); panel.hidden=false;
 }
 function renderRestore(){
   const panel=document.getElementById("restorePanel");
-  if(!backups.length){panel.innerHTML=`<h4>Restore a backup</h4><div class="restore-empty">No backups yet — one is captured automatically before each update.</div>`;return;}
-  const rows=backups.map((s,i)=>`<div class="restore-row"><span class="rmeta"><b>${esc(s.t)}</b> &middot; ${esc(s.by||"—")} &middot; rev ${s.rev}${i===0?" &middot; most recent":""}</span><button class="mini" data-restore="${i}">Restore this</button></div>`).join("");
-  panel.innerHTML=`<h4>Restore a backup &middot; ${backups.length} kept</h4>${rows}`;
+  const head=`<h4>Backup &amp; Restore</h4>
+    <div class="rmeta" style="margin-bottom:8px">Last backup: <b>${lastBackupAt?esc(lastBackupAt):"none yet"}</b></div>
+    <div class="restore-row" style="border-top:none;padding-top:0">
+      <span class="rmeta" style="flex:1">Restore everything from a downloaded backup file</span>
+      <button class="mini" data-restore-file>Restore from file…</button>
+    </div>`;
+  let pts;
+  if(!backups.length){
+    pts=`<div class="restore-empty">No recovery points yet for this use case — one is captured automatically before each change.</div>`;
+  } else {
+    pts=backups.map((s,i)=>`<div class="restore-row"><span class="rmeta"><b>${esc(s.t)}</b> &middot; ${esc(s.by||"—")} &middot; rev ${s.rev}${i===0?" &middot; most recent":""}</span><button class="mini" data-restore="${i}">Restore this</button></div>`).join("");
+  }
+  panel.innerHTML=`${head}<div class="dh" style="margin:10px 0 4px">Recovery points for this use case${backups.length?" &middot; "+backups.length+" kept":""}</div>${pts}`;
 }
+document.getElementById("backupBtn").addEventListener("click",doBackup);
 document.getElementById("restoreBtn").addEventListener("click",openRestore);
 document.getElementById("restorePanel").addEventListener("click",e=>{
+  if(e.target.closest("[data-restore-file]")){ document.getElementById("restoreFile").click(); return; }
   const b=e.target.closest("[data-restore]"); if(!b) return;
   const snap=backups[parseInt(b.dataset.restore,10)]; if(!snap) return;
-  if(confirm(`Restore this use case to the backup from ${snap.t}? The current board is backed up first, so this is undoable too.`)){
+  if(confirm(`Restore this use case to the recovery point from ${snap.t}? The current board is backed up first, so this is undoable too.`)){
     state=deep(snap.data); save();
-    document.getElementById("restorePanel").hidden=true; toast("Restored backup from "+snap.t);
+    document.getElementById("restorePanel").hidden=true; toast("Restored from "+snap.t);
   }
+});
+document.getElementById("restoreFile").addEventListener("change",async e=>{
+  const file=e.target.files&&e.target.files[0]; e.target.value="";
+  if(!file) return;
+  let data; try{ data=JSON.parse(await file.text()); }catch(err){ toast("Couldn't read that backup file"); return; }
+  if(!data||!data.index||!data.boards){ toast("Not a valid backup file"); return; }
+  if(!confirm(`Restore the whole tracker from the backup taken ${data.at||"(unknown date)"}? This replaces the current plants, use cases and update trees for everyone.`)) return;
+  nav=normNav(data.index);
+  if(hasStore){
+    await sSet(INDEX_PATH,nav);
+    for(const id in data.boards){ await sSet(boardKey(id),data.boards[id]); }
+    for(const id in (data.backups||{})){ await sSet(bakKey(id),data.backups[id]); }
+  } else {
+    boardCache={}; bakCache={};
+    for(const id in data.boards){ boardCache[id]=data.boards[id]; }
+    for(const id in (data.backups||{})){ bakCache[id]=data.backups[id]; }
+  }
+  currentId=null; state=null; backups=[]; detachBoard();
+  document.getElementById("restorePanel").hidden=true;
+  showBoard(false); renderNav();
+  toast("Restored from backup "+(data.at||""));
 });
 
 /* ============================================================ BOOT */
@@ -715,6 +772,8 @@ function showSetupBanner(){}
   const idx = hasStore ? await sGet(INDEX_PATH) : null;
   if(idx){ nav=normNav(idx); if(mergeSeed(nav)&&hasStore) await sSet(INDEX_PATH,nav); }
   else { nav=seedNav(); if(hasStore) await sSet(INDEX_PATH,nav); }   /* first load seeds from the file */
+  if(hasStore){ const lb=await sGet("meta/lastBackup"); if(lb) lastBackupAt=lb; }
+  updateBackupIndicator();
   renderNav();
   if(hasStore) listenIndex();
   const m=location.hash.match(/u=([^&]+)/);
