@@ -382,23 +382,34 @@ function today(){const d=new Date(),M=["Jan","Feb","Mar","Apr","May","Jun","Jul"
 function statusLabel(k){const s=STATUSES.find(x=>x.k===k);return s?s.label:k;}
 function normNav(o){const n={};PLANTS.forEach(p=>{n[p]=toArr(o&&o[p]);});return n;}
 function toArr(x){if(Array.isArray(x))return x;if(x&&typeof x==="object")return Object.keys(x).sort((a,b)=>(+a)-(+b)).map(k=>x[k]);return [];}
-function normBoard(b){b.milestones=toArr(b.milestones);b.milestones.forEach(m=>{m.updates=toArr(m.updates);});b.boxes=toArr(b.boxes);b.boxes.forEach(x=>{x.updates=toArr(x.updates);});return b;}
+function normBoard(b){
+  b.milestones=toArr(b.milestones);
+  b.milestones.forEach(m=>{m.updates=toArr(m.updates);m.updates.forEach(u=>{if(!u.id)u.id="leg:"+(u.t||"")+"|"+(u.text||"");});});
+  b.boxes=toArr(b.boxes);
+  b.boxes.forEach(x=>{x.updates=toArr(x.updates);x.updates.forEach(u=>{if(!u.id)u.id="leg:"+(u.t||"")+"|"+(u.text||"");});});
+  b.delU=toArr(b.delU);
+  return b;
+}
 function plantOf(id){for(const p of PLANTS)if((nav[p]||[]).some(u=>u.id===id))return p;return null;}
 function useCaseName(id){for(const p of PLANTS){const u=(nav[p]||[]).find(x=>x.id===id);if(u)return u.name;}return "Use case";}
 function findUC(id){return !!plantOf(id);}
 function currentStage(st){if(!st||!st.milestones)return null;let cur=-1;st.milestones.forEach((m,i)=>{if(m.status!=="idle")cur=i;});if(cur<0)return null;const m=st.milestones[cur];return {n:cur+1,name:m.name,status:m.status};}
-/* Union of two update lists so no dated update is ever lost under concurrent edits */
-function mergeUpdates(a,b){
+/* Union of two update lists so no dated update is ever lost under concurrent edits.
+   delSet holds ids of updates that were deleted (tombstones) — those stay removed. */
+function mergeUpdates(a,b,delSet){
   const map={},order=[];
-  (a||[]).concat(b||[]).forEach(u=>{const key=u.id||((u.t||"")+"|"+(u.text||""));if(!(key in map)){map[key]=u;order.push(key);}});
+  (a||[]).concat(b||[]).forEach(u=>{const key=u.id;if(delSet&&delSet.has(key))return;if(!(key in map)){map[key]=u;order.push(key);}});
   return order.map(k=>map[k]).sort((x,y)=>(y.t||"").localeCompare(x.t||""));
 }
+function shownUpdates(it){const d=new Set((state&&state.delU)||[]);return (it.updates||[]).filter(u=>!d.has(u.id));}
 function mergeBoardUpdates(base,other){
   if(!base||!other) return base;
+  base.delU=Array.from(new Set([].concat(base.delU||[],other.delU||[])));
+  const del=new Set(base.delU);
   const om={}; (other.milestones||[]).forEach(m=>om[m.id]=m);
-  (base.milestones||[]).forEach(m=>{const o=om[m.id];if(o)m.updates=mergeUpdates(m.updates,o.updates);});
+  (base.milestones||[]).forEach(m=>{const o=om[m.id];m.updates=mergeUpdates(m.updates,o?o.updates:[],del);});
   const ob={}; (other.boxes||[]).forEach(b=>ob[b.id]=b);
-  (base.boxes||[]).forEach(b=>{const o=ob[b.id];if(o)b.updates=mergeUpdates(b.updates,o.updates);});
+  (base.boxes||[]).forEach(b=>{const o=ob[b.id];b.updates=mergeUpdates(b.updates,o?o.updates:[],del);});
   return base;
 }
 function navStatusText(id){const c=statusMap[id];return c?c.name:"not started";}
@@ -458,7 +469,7 @@ function freshState(title){
     title:title||"Untitled Use Case",
     meta:{programme:"Pravartanam",owner:"",domain:"",ref:""},
     milestones:DEFAULT_MILESTONES.map((n,i)=>({id:"m"+(i+1),name:n,status:"idle",updates:[]})),
-    boxes:[]};
+    boxes:[],delU:[]};
 }
 
 /* ---------- backups ---------- */
@@ -623,7 +634,7 @@ function mNode(m,i){
       </div>
       ${updatesBlock(m,"m")}
       <div class="cardactions"><button class="mini" data-act="add-update" data-scope="m" data-id="${m.id}">+ Add update</button></div>
-      <div class="addform" data-form="m-${m.id}"><input type="text" placeholder="Type the update, then press Enter…" data-input="m-${m.id}"></div>
+      <div class="addform" data-form="m-${m.id}"><input type="text" placeholder="Type the update, then Save…" data-input="m-${m.id}"><button class="mini" data-act="commit-update">Save</button></div>
     </div>`;
   return n;
 }
@@ -643,13 +654,14 @@ function boxNode(b){
         <button class="mini" data-act="add-update" data-scope="b" data-id="${b.id}">+ Add update</button>
         <button class="mini danger" data-act="del-box" data-id="${b.id}">Remove box</button>
       </div>
-      <div class="addform" data-form="b-${b.id}"><input type="text" placeholder="Type the update, then press Enter…" data-input="b-${b.id}"></div>
+      <div class="addform" data-form="b-${b.id}"><input type="text" placeholder="Type the update, then Save…" data-input="b-${b.id}"><button class="mini" data-act="commit-update">Save</button></div>
     </div>`;
   return n;
 }
 function updatesBlock(item,scope){
-  if(!item.updates||!item.updates.length) return `<div class="updates"><div class="noupdates">No updates yet.</div></div>`;
-  const rows=item.updates.map((u,idx)=>`
+  const shown=shownUpdates(item);
+  if(!shown.length) return `<div class="updates"><div class="noupdates">No updates yet.</div></div>`;
+  const rows=shown.map((u,idx)=>`
     <div class="update">
       <span class="ts">${esc(u.t)}</span>
       ${u.by?`<span class="who">${esc(u.by)}</span>`:""}
@@ -707,14 +719,19 @@ spine.addEventListener("click",e=>{
   else if(a==="add-box"){state.boxes.push({id:"x"+nextId(),after:parseInt(t.dataset.after,10),kind:t.dataset.kind,title:t.dataset.kind+" — untitled",status:"idle",text:"",updates:[]});save();}
   else if(a==="del-box"){state.boxes=state.boxes.filter(b=>b.id!==t.dataset.id);save();}
   else if(a==="add-update"){const f=document.querySelector(`.addform[data-form="${t.dataset.scope}-${t.dataset.id}"]`);f.classList.add("open");const inp=f.querySelector("input");inp.value=today()+" — ";inp.focus();inp.setSelectionRange(inp.value.length,inp.value.length);}
-  else if(a==="del-update"){const it=t.dataset.scope==="m"?findM(t.dataset.id):findB(t.dataset.id);it.updates.splice(parseInt(t.dataset.idx,10),1);save();}
+  else if(a==="del-update"){const it=t.dataset.scope==="m"?findM(t.dataset.id):findB(t.dataset.id);const u=shownUpdates(it)[parseInt(t.dataset.idx,10)];if(u){state.delU=state.delU||[];if(state.delU.indexOf(u.id)<0)state.delU.push(u.id);it.updates=it.updates.filter(x=>x.id!==u.id);}save();}
+  else if(a==="commit-update"){const inp=t.closest(".addform").querySelector("input[data-input]");commitUpdateFromInput(inp);}
 });
+function commitUpdateFromInput(inp){
+  if(!inp) return;
+  const val=inp.value.trim(); if(!val) return;
+  const [scope,id]=inp.dataset.input.split(/-(.+)/);
+  const it=scope==="m"?findM(id):findB(id); if(!it) return;
+  it.updates.unshift({id:"u"+nextId(),t:stamp(),text:val,by:myName||""}); save();
+}
 spine.addEventListener("keydown",e=>{
   const inp=e.target.closest("input[data-input]"); if(!inp||e.key!=="Enter") return;
-  e.preventDefault(); const val=inp.value.trim(); if(!val) return;
-  const [scope,id]=inp.dataset.input.split(/-(.+)/);
-  const it=scope==="m"?findM(id):findB(id);
-  it.updates.unshift({id:"u"+nextId(),t:stamp(),text:val,by:myName||""}); save();
+  e.preventDefault(); commitUpdateFromInput(inp);
 });
 spine.addEventListener("focusin",e=>{if(e.target.closest("[contenteditable],input"))isEditing=true;});
 spine.addEventListener("focusout",()=>{setTimeout(()=>{isEditing=false;if(pendingRemote)adopt(pendingRemote);},50);});
@@ -724,7 +741,7 @@ spine.addEventListener("blur",e=>{
   if(k==="name")findM(el.dataset.id).name=txt;
   else if(k==="box-title")findB(el.dataset.id).title=txt;
   else if(k==="box-text")findB(el.dataset.id).text=txt==="—"?"":txt;
-  else if(k==="update"){const it=el.dataset.scope==="m"?findM(el.dataset.id):findB(el.dataset.id);it.updates[parseInt(el.dataset.idx,10)].text=txt;}
+  else if(k==="update"){const it=el.dataset.scope==="m"?findM(el.dataset.id):findB(el.dataset.id);const u=shownUpdates(it)[parseInt(el.dataset.idx,10)];if(u)u.text=txt;}
   else return; save();
 },true);
 spine.addEventListener("change",e=>{
