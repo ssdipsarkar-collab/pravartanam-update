@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pravartanam Use Case Update Tracker</title>
+<style>
+  :root{
+    --ink:#191E26; --ink-soft:#4A5462; --line:#D3D9DE; --line-soft:#E5E9EC;
+    --paper:#EEF1F3; --card:#FFFFFF; --steel:#0F6E8C; --steel-deep:#0A4E64;
+    --idle:#9AA3AB; --active:#C9812B; --done:#2E7D5B; --blocked:#B5362E; --hold:#6B5B95;
+    --radius:10px;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1360px;margin:0 auto;padding:20px 28px 48px}
+
+  /* app title */
+  .apphead{border:1px solid var(--line);background:linear-gradient(180deg,#12414f 0%,#0A4E64 100%);color:#fff;border-radius:var(--radius);padding:20px 22px;margin-bottom:16px}
+  .apphead .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:#8fd0e0;margin:0 0 6px}
+  .apptitle{font-size:24px;font-weight:700;letter-spacing:-.01em;margin:0}
+
+  .banner{font-size:12.5px;padding:9px 14px;border-radius:8px;margin-bottom:14px;line-height:1.45}
+  .banner.shared{background:#E6F1F4;border:1px solid #Bcdce4;color:var(--steel-deep)}
+  .banner.solo{background:#FBF3E4;border:1px solid #ECD9B4;color:#7a5a1e}
+  .banner b{font-weight:700}
+
+  /* plant ribbon (Excel-style sheet tabs) */
+  #nav{margin-bottom:16px}
+  .ribbon{display:flex;gap:3px;overflow-x:auto;padding:6px 2px 0;scrollbar-width:thin}
+  .tab{flex:0 0 auto;padding:9px 20px;font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:.07em;
+       background:#DBE2E7;color:var(--ink-soft);border:1px solid var(--line);border-bottom:none;
+       border-radius:9px 9px 0 0;cursor:pointer;white-space:nowrap;position:relative;top:1px;transition:background .12s}
+  .tab:hover{background:#E7ECEF;color:var(--ink)}
+  .tab .cnt{font-weight:600;font-size:10px;color:var(--idle);margin-left:7px}
+  .tab.active{background:var(--card);color:var(--steel-deep);border-color:var(--steel);border-top:3px solid var(--steel);padding-top:7px;z-index:2}
+  .tab.active .cnt{color:var(--steel)}
+  .planttools{border:1px solid var(--steel);border-top:none;background:var(--card);border-radius:0 0 var(--radius) var(--radius);
+       padding:14px 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;position:relative;top:-1px}
+  .planttools .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--idle)}
+  .uc-select{flex:1;min-width:220px;font-family:var(--sans);font-size:14px;border:1px solid var(--line);border-radius:8px;padding:9px 11px;background:var(--card);color:var(--ink);cursor:pointer}
+  .uc-select:focus{outline:none;border-color:var(--steel)}
+  .uc-addrow{display:flex;gap:8px;flex-basis:100%;margin-top:2px}
+  .uc-addrow[hidden]{display:none}
+  .uc-addrow input{flex:1;border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:14px;font-family:var(--sans)}
+  .uc-addrow input:focus{outline:none;border-color:var(--steel)}
+  .boardhint{border:1px dashed var(--line);border-radius:var(--radius);padding:26px 20px;text-align:center;color:var(--idle);font-size:14px;margin-top:16px}
+
+  /* collab bar */
+  .collab{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;border:1px solid var(--line);background:var(--card);border-radius:var(--radius);padding:10px 14px;margin-bottom:14px;font-size:13px}
+  .collab .dotstat{width:9px;height:9px;border-radius:50%;background:var(--idle);flex:none}
+  .collab .dotstat.ok{background:var(--done)} .collab .dotstat.saving{background:var(--active)}
+  .collab .dotstat.err{background:var(--blocked)} .collab .dotstat.local{background:var(--idle)}
+  .collab .sync{color:var(--ink-soft)} .collab .sep{flex:1}
+  .collab .bkstat{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--idle)}
+  .collab input.name{border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-family:var(--sans);font-size:13px;width:150px}
+  .collab input.name:focus{outline:none;border-color:var(--steel)}
+  .collab label.nl{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--idle)}
+  .linkbtn{font-family:var(--sans);font-size:12px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--ink-soft);border-radius:6px;padding:5px 9px;cursor:pointer;line-height:1}
+  .linkbtn:hover{border-color:var(--steel);color:var(--steel)}
+
+  .restore-panel{border:1px solid var(--line);background:var(--card);border-radius:var(--radius);padding:10px 14px;margin-bottom:14px}
+  .restore-panel h4{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--steel);margin:0 0 6px}
+  .restore-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--line-soft)}
+  .restore-row:first-of-type{border-top:none}
+  .restore-row .rmeta{flex:1;color:var(--ink-soft);font-family:var(--mono);font-size:12px}
+  .restore-row .rmeta b{color:var(--ink);font-weight:600}
+  .restore-empty{font-size:12.5px;color:var(--idle);font-style:italic}
+
+  header.top{border:1px solid var(--line);background:var(--card);border-radius:var(--radius);padding:18px 20px;margin-bottom:18px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--steel);margin:0 0 6px}
+  h1.title{font-size:22px;font-weight:700;letter-spacing:-.01em;margin:0;outline:none}
+  h1.title:focus{box-shadow:inset 0 -2px 0 var(--steel)}
+  .metarow{display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:12px;font-size:13px;color:var(--ink-soft)}
+  .metarow .field{display:flex;flex-direction:column;min-width:120px}
+  .metarow label{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--idle);margin-bottom:2px}
+  .metarow .val{outline:none;border-bottom:1px dashed transparent;padding:1px 0;color:var(--ink)}
+  .metarow .val:focus{border-bottom-color:var(--steel)}
+  .progress{display:flex;align-items:flex-start;gap:14px;margin-top:16px}
+  .bar{flex:1;display:flex;gap:4px;background:transparent;align-items:flex-start}
+  .segwrap{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+  .seg{width:100%;height:10px;border-radius:3px;background:#D7DCE0;position:relative;transition:background .2s,box-shadow .2s}
+  .seglbl{font-size:9.5px;font-style:italic;line-height:1.2;color:var(--ink-soft);text-align:center;word-break:break-word;hyphens:auto}
+  .segwrap.cur .seglbl{color:var(--ink);font-weight:600}
+  .pcount{margin-top:-1px}
+  .seg.s-active{background:var(--active)}
+  .seg.s-done{background:var(--done)}
+  .seg.s-blocked{background:var(--blocked)}
+  .seg.s-hold{background:var(--hold)}
+  .seg.cur{box-shadow:0 0 0 2px var(--card),0 0 0 3px currentColor}
+  .curstage{display:flex;align-items:baseline;gap:10px;margin-top:14px;flex-wrap:wrap}
+  .curstage .cs-ey{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--idle)}
+  .curstage .cs-name{font-weight:700;font-size:16px;color:var(--ink);letter-spacing:-.01em}
+  .curstage .cs-num{font-family:var(--mono);color:var(--steel);font-weight:700}
+  .curstage .cs-status{font-family:var(--mono);font-size:11px;padding:2px 9px;border-radius:99px;border:1px solid var(--line);color:var(--ink-soft)}
+  .curstage .cs-status.s-active{color:var(--active);border-color:var(--active)}
+  .curstage .cs-status.s-done{color:var(--done);border-color:var(--done)}
+  .curstage .cs-status.s-blocked{color:var(--blocked);border-color:var(--blocked)}
+  .curstage .cs-status.s-hold{color:var(--hold);border-color:var(--hold)}
+  .pcount{font-family:var(--mono);font-size:12px;color:var(--ink-soft);white-space:nowrap}
+  .ucdetails{margin-top:16px;border-top:1px solid var(--line-soft);padding-top:12px}
+  .ucdetails .dh{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--steel);margin-bottom:8px}
+  .ucchips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+  .chip{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-radius:99px;padding:4px 11px;color:var(--ink);background:#F5F8F9}
+  .chip b{color:var(--steel-deep);font-weight:700;margin-right:6px;text-transform:uppercase;letter-spacing:.06em;font-size:9.5px}
+  .ucdesc{font-size:13.5px;line-height:1.65;color:var(--ink-soft)}
+  .ucnote{font-size:12.5px;color:var(--idle);font-style:italic}
+
+  .spine{position:relative;padding-left:44px}
+  .spine::before{content:"";position:absolute;left:15px;top:8px;bottom:8px;width:2px;background:var(--line)}
+  .node{position:relative}
+  .dot{position:absolute;left:-44px;top:16px;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;font-weight:700;color:#fff;border:3px solid var(--paper);cursor:pointer;user-select:none;box-shadow:0 0 0 1px var(--line);background:var(--idle);transition:background .15s}
+  .dot.s-idle{background:var(--idle)} .dot.s-active{background:var(--active)} .dot.s-done{background:var(--done)} .dot.s-blocked{background:var(--blocked)} .dot.s-hold{background:var(--hold)}
+  .dot.box-dot{width:20px;height:20px;left:-38px;top:18px;border-radius:5px;font-size:0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin:8px 0}
+  .card.blocked-edge{border-left:4px solid var(--blocked)}
+  .card .row1{display:flex;align-items:flex-start;gap:10px;justify-content:space-between}
+  .stagename{font-weight:700;font-size:16px;outline:none;flex:1;letter-spacing:-.01em}
+  .stagename:focus{box-shadow:inset 0 -2px 0 var(--steel)}
+  .boxcard{margin-left:6px;border-style:dashed;background:#FBFCFC}
+  .boxcard .stagename{font-size:14px;font-weight:600}
+  .kindtag{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--steel);border:1px solid var(--line);border-radius:4px;padding:2px 6px;align-self:center}
+  select.status{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-radius:6px;padding:5px 7px;background:var(--card);color:var(--ink);cursor:pointer}
+  .meta2{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:8px;font-size:12.5px;color:var(--ink-soft)}
+  .meta2 .m{display:flex;gap:5px;align-items:baseline}
+  .meta2 label{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--idle)}
+  .meta2 .v{outline:none;border-bottom:1px dashed transparent;color:var(--ink);min-width:40px}
+  .meta2 .v:focus{border-bottom-color:var(--steel)}
+  .updates{margin-top:10px;border-top:1px solid var(--line-soft);padding-top:8px}
+  .update{display:flex;gap:10px;font-size:13px;padding:4px 0;align-items:flex-start}
+  .update .ts{font-family:var(--mono);font-size:11px;color:var(--idle);white-space:nowrap;padding-top:1px;min-width:78px}
+  .update .who{font-family:var(--mono);font-size:10px;color:var(--steel);white-space:nowrap;padding-top:2px}
+  .update .txt{flex:1;color:var(--ink);outline:none}
+  .update .txt:focus{background:var(--line-soft);border-radius:4px}
+  .update .del{border:none;background:none;color:var(--idle);cursor:pointer;font-size:14px;line-height:1;padding:0 2px}
+  .update .del:hover{color:var(--blocked)}
+  .noupdates{font-size:12px;color:var(--idle);font-style:italic;padding:2px 0}
+  .cardactions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .mini{font-family:var(--sans);font-size:12px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--ink-soft);border-radius:6px;padding:5px 9px;cursor:pointer;line-height:1}
+  .mini:hover{border-color:var(--steel);color:var(--steel)}
+  .mini.danger:hover{border-color:var(--blocked);color:var(--blocked)}
+  .addform{display:none;gap:8px;margin-top:8px;align-items:center}
+  .addform.open{display:flex}
+  .addform input{flex:1;border:1px solid var(--line);border-radius:6px;padding:7px 9px;font-family:var(--sans);font-size:13px}
+  .addform input:focus{outline:none;border-color:var(--steel)}
+  .slot{position:relative;height:22px;display:flex;align-items:center;justify-content:center}
+  .slot button{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--idle);background:var(--paper);border:1px dashed var(--line);border-radius:99px;padding:2px 10px;cursor:pointer}
+  .slot button:hover{color:var(--steel);border-color:var(--steel)}
+  .picker{display:none;gap:6px;margin:4px 0 6px;flex-wrap:wrap;justify-content:center}
+  .picker.open{display:flex}
+  .picker button{font-family:var(--mono);font-size:11px;border:1px solid var(--line);background:var(--card);color:var(--ink-soft);border-radius:6px;padding:5px 9px;cursor:pointer}
+  .picker button:hover{border-color:var(--steel);color:var(--steel)}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:13px;padding:9px 16px;border-radius:8px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:60}
+  .toast.show{opacity:1}
+  @media(max-width:560px){
+    .wrap{padding:14px 12px 40px}
+    .metarow .field{min-width:100px}
+    .update .ts{min-width:64px}
+    .collab input.name{width:120px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="apphead">
+    <p class="eyebrow">PRAVARTANAM</p>
+    <h1 class="apptitle">Pravartanam Use Case Update Tracker</h1>
+  </header>
+
+  <div id="nav"></div>
+
+  <div class="boardhint" id="boardHint">Select a use case from a plant above to open its update tree.</div>
+
+  <div id="boardWrap" hidden>
+    <div class="collab">
+      <span class="dotstat" id="dotstat"></span>
+      <span class="sync" id="sync">—</span>
+      <span class="sep"></span>
+      <span class="bkstat" id="bkstat">No backup yet</span>
+      <button class="linkbtn" id="restoreBtn">Restore…</button>
+      <label class="nl" for="editorName">You are</label>
+      <input class="name" id="editorName" type="text" placeholder="your name" maxlength="24" spellcheck="false">
+    </div>
+
+    <div class="restore-panel" id="restorePanel" hidden></div>
+
+    <header class="top">
+      <p class="eyebrow" id="plantTag">—</p>
+      <h1 class="title" id="title" contenteditable="true" spellcheck="false">Untitled Use Case</h1>
+      <div class="curstage" id="curStage"></div>
+      <div class="progress">
+        <div class="bar" id="bar"></div>
+        <span class="pcount" id="pcount">0 / 9 done</span>
+      </div>
+      <div class="ucdetails" id="ucDetails"></div>
+    </header>
+
+    <div class="spine" id="spine"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Firebase Web SDK (compat) -->
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+
+<script>
+/* ============================================================
+   PRAVARTANAM USE CASE UPDATE TRACKER
+   Plant -> Use case navigation; each use case is its own shared board
+   backed by Firebase Realtime Database, with a rolling backup history.
+   Falls back to in-session single-user mode if Firebase isn't configured.
+   ============================================================ */
+
+const PLANTS=["BSL","BSP","DSP","RSP","ISP","MINES","CENTRAL"];
+
+/* Use cases seeded from all_target_value_use_case.docx (plant mapping inferred from mill identifiers) */
+const SEED={
+  BSL:[
+    "Coke Quality (CSR/CRI/M40/M10) Optimization via Blend Properties — Coke Oven",
+    "Blast Furnace Fuel Rate Reduction at BF-2",
+    "Blast Furnace Productivity Improvement at BF-2",
+    "Ferro Alloy Consumption Reduction via Recovery Prediction (SMS-II)",
+    "Increase HSM Throughput via Mill & Furnace Downtime Reduction",
+    "App-based Real-time Safety Alerts (PPE, SOS, Live Recording)",
+    "AI Geo-tagged Safety Observation App"
+  ],
+  BSP:[
+    "Sinter Fuel Rate Reduction via BTP, Permeability & FeO Control (SP-3)",
+    "Blast Furnace Fuel Rate Reduction at BF-8",
+    "Blast Furnace Slag Rate Reduction at BF-8",
+    "Blast Furnace Productivity Improvement at BF-8",
+    "Ferro Alloy Cost Optimization via Recovery Prediction (SMS)",
+    "Video Analytics for Refractory Erosion in Teeming Ladle (SMS-2)",
+    "Increase Plate Mill Yield",
+    "URM Yield Improvement via Rail Length Precision",
+    "App-based Real-time Safety Alerts (PPE, SOS, Live Recording)",
+    "AI Geo-tagged Safety Observation App"
+  ],
+  DSP:[
+    "Sinter Fuel Rate Reduction via BTP, Permeability & FeO Control (SP-2)",
+    "Blast Furnace Fuel Rate Reduction at BF-4",
+    "Blast Furnace Productivity Improvement at BF-4",
+    "Video Analytics Length & Weight Measurement for Billets/Blooms (SMS)",
+    "MSM Yield & Throughput via Reduced Short Length & Tolerances",
+    "App-based Real-time Safety Alerts (PPE, SOS, Live Recording)",
+    "AI Geo-tagged Safety Observation App",
+    "Ferro Alloy Consumption Reduction via Recovery Prediction (SMS)"
+  ],
+  RSP:[
+    "Blast Furnace Fuel Rate Reduction at BF-5",
+    "Ferro Alloy Consumption Reduction via Recovery Prediction (SMS)",
+    "HSM Throughput & Scale Loss Reduction via Soaking Time Optimization",
+    "IoT-enabled Loco Health Monitoring to Reduce Downtime (Traffic)",
+    "App-based Real-time Safety Alerts (PPE, SOS, Live Recording)",
+    "AI Geo-tagged Safety Observation App"
+  ],
+  ISP:[
+    "Blast Furnace Fuel Rate Reduction Model",
+    "Sinter Line Productivity via Dynamic Operational Control",
+    "USM Yield Improvement via Scrap / Excess Length Reduction",
+    "App-based Real-time Safety Alerts (PPE, SOS, Live Recording)"
+  ],
+  MINES:[
+    "Bolani — FMS, Predictive Maintenance, Wi-Fi & Central Monitoring Station",
+    "Bolani — Mine Planning, Blasting Optimization & Stock Monitoring"
+  ],
+  CENTRAL:[]
+};
+function seedNav(){const n=normNav(null);for(const p of PLANTS){(SEED[p]||[]).forEach((name,i)=>n[p].push({id:`${p}-${i+1}`,name}));}return n;}
+
+/* Full initiative details from all_target_value_use_case.docx, keyed by seeded id */
+const DETAILS={
+"BSL-1":{area:"Coke Oven",desc:"Coke quality parameters (CSR, CRI, Micum indices) show a declining trend due to higher reliance on indigenous coal with variable quality, impacting blast furnace performance and fuel rate efficiency. This initiative predicts coke quality using advanced analytics based on coal blend properties, identifies key input properties influencing variability, enables source-wise coal tracking and blend optimization, deploys a coke quality prediction dashboard, recommends battery operating ranges, and monitors blend consistency."},
+"BSL-2":{area:"Blast Furnace",desc:"The blast furnace fuel rate is elevated, inflating hot metal production cost. This initiative develops a data-driven model linking fuel rate with key operational parameters. Sub-models include silicon prediction and control, heat loss minimization, hot blast parameter optimization, burden charging optimization, oxygen enrichment optimization, and top gas utilization. Targets a reduction in fuel rate along with a throughput improvement."},
+"BSL-3":{area:"Blast Furnace",desc:"Blast furnace productivity has room for improvement. This initiative develops data-driven models including permeability index optimization, charging recommender and descent rate optimization, hearth drainage and tap-to-tap time minimization, coke quality prediction and optimization, and hot blast parameter optimization. Targets a throughput improvement."},
+"BSL-4":{area:"SMS",desc:"Ferro alloy consumption in SMS-II shows considerable variation within the same grade. This initiative develops a predictive model to optimize ferroalloy usage by maximizing recovery, including an ML model for alloy recovery rates, identification of high-impact parameters, and optimal dosing recommendations integrated into a real-time advisory system. Targets a reduction in ferro alloy consumption."},
+"BSL-5":{area:"HSM (Hot Strip Mill)",desc:"HSM production runs below installed capacity. Key limiting factors include frequent cobbles, drive breakdowns, and furnace downtime from scale formation. This initiative deploys real-time monitoring and predictive analytics for cobble prevention, condition-based monitoring of mill drives, scale formation trend analysis, and automated/remote scale removal machines. Targets a production increase."},
+"BSL-6":{area:"Safety",desc:"Addresses the complexity of ensuring consistent PPE usage and safety compliance. Includes AI-powered PPE detection via video analytics, automatic identification of unsafe acts and hazards, mobile app alerts, SOS alerts with geo-tagging, live video/audio recording, and a centralized safety dashboard."},
+"BSL-7":{area:"Safety",desc:"Field-level safety observations are often captured manually, leading to delays and incomplete records. This initiative provides real-time capture with geo-location tagging, AI-assisted classification, automatic aggregation and visualization on dashboards, early alerts for critical violations, historical analysis and benchmarking, and SOP enforcement support."},
+"BSP-1":{area:"Sinter Plant (SP-3)",desc:"The sinter plant fuel rate is elevated, leading to higher energy cost and emissions. Develops a multi-layered digital solution including a live BTP prediction model, an FeO classification model to predict good and bad zones, and SOPs to improve bed permeability. Targets a reduction in fuel rate."},
+"BSP-2":{area:"Blast Furnace",desc:"The blast furnace fuel rate is elevated. Develops data-driven models including silicon prediction and control, heat loss minimization, hot blast parameter optimization, burden charging optimization, oxygen enrichment optimization, and top gas utilization. Targets a reduction in fuel rate and a throughput improvement."},
+"BSP-3":{area:"Blast Furnace",desc:"The blast furnace slag rate is high, driving up hot metal production costs, driven by high silica and alumina content in raw material and flux additions at the sinter plant. Develops models including sinter chemistry optimization, incoming material quality prediction, slag basicity and viscosity analysis, coke quality prediction, and burden distribution optimization. Targets a fuel rate reduction from slag reduction along with a throughput improvement."},
+"BSP-4":{area:"Blast Furnace",desc:"Blast furnace productivity has room for improvement. Develops models including permeability index optimization, charging recommender and descent rate optimization, hearth drainage and tap-to-tap time minimization, coke quality prediction and optimization, and hot blast parameter optimization. Targets a throughput improvement."},
+"BSP-5":{area:"SMS",desc:"Ferro alloy consumption shows considerable variation within the same grade. Develops a predictive model using ML to predict alloy recovery rates, identify high-impact parameters, and recommend optimal dosing integrated into a real-time advisory system. Targets a reduction across the grades contributing to the bulk of consumption across both SMS."},
+"BSP-6":{area:"SMS",desc:"Teeming ladles experience premature refractory replacement due to manual wear assessment. Deploys a video analytics-based refractory erosion monitoring system with high-resolution thermal and optical cameras, AI models for erosion pattern detection, and a health index for refractory lining to predict remaining life. Targets an increase in teeming ladle life."},
+"BSP-7":{area:"Plate Mill",desc:"Plate Mill gross yield needs improvement through digitally enabled root cause analysis. Develops a digital root cause analysis system integrating upstream and downstream process data, ML models to identify key parameters contributing to edge cracks, heat-wise visualization of associated drivers, and alerts/SOPs for high-risk combinations. Targets an increase in gross yield."},
+"BSP-8":{area:"URM (Universal Rail Mill)",desc:"URM gross yield sees losses from cropping to achieve the target rail length. Performs correlation analysis between mill speed, temperature profiles, cooling bed behaviour and final rail length deviations, identifies optimal operating windows, develops predictive models for in-process adjustments, identifies quality issues affecting yield, and generates SOPs for repeatability. Targets a yield increase."},
+"BSP-9":{area:"Safety",desc:"AI-powered PPE detection via video analytics, automatic identification of unsafe acts and hazards, mobile app alerts, SOS alerts with geo-tagging, live video/audio recording, and a centralized safety dashboard."},
+"BSP-10":{area:"Safety",desc:"Real-time capture of safety violations and best practices with geo-location tagging, AI-assisted classification, automatic aggregation and visualization on dashboards, early alerts for critical violations, historical analysis and benchmarking, and SOP enforcement support."},
+"DSP-1":{area:"Sinter Plant (SP-2)",desc:"The sinter plant fuel rate is elevated, leading to higher energy cost and emissions. This initiative develops a multi-layered digital solution including a live BTP prediction model to identify and control critical upstream parameters, an FeO classification model to predict good and bad zones for proactive raw mix and ignition adjustments, and SOPs to improve bed permeability based on moisture levels, particle size distribution, and calcined lime dosing. Targets a fuel rate reduction."},
+"DSP-2":{area:"Blast Furnace",desc:"The blast furnace fuel rate is elevated, inflating hot metal production cost. This initiative develops a data-driven model linking fuel rate with key operational parameters. Sub-models include silicon prediction and control, heat loss minimization, hot blast parameter optimization, burden charging optimization, oxygen enrichment optimization, and top gas utilization. Targets a fuel rate reduction and a throughput improvement."},
+"DSP-3":{area:"Blast Furnace",desc:"Blast furnace productivity has room for improvement. This initiative develops data-driven models to optimize parameters impacting productivity, including hearth drainage and tap-to-tap time minimization, coke quality prediction and optimization, hot blast parameter optimization, permeability index optimization, and charging recommender and descent rate optimization. Targets a throughput improvement."},
+"DSP-4":{area:"SMS",desc:"Billet/bloom length and weight measurements are performed manually or through offline systems, leading to inaccuracies and inconsistencies. This initiative deploys high-resolution cameras and image analytics for real-time billet/bloom length measurement, AI-based algorithms for auto-detection and dimensional validation, dynamic weight calculation using calibrated process data, immediate alerts for under/over-length billets, automatic tagging and logging into MES/ERP systems, and analytics dashboards for monitoring length distributions and yield losses."},
+"DSP-5":{area:"MSM (Medium Structural Mill)",desc:"The Medium Structural Mill has significant losses from cropping due to final sections falling short of the required structure length. This initiative deploys a length prediction model for shearing optimization, optimizes rolling parameters to reduce short-length instances, develops operator dashboards for length variability and yield trends, establishes SOPs for bloom conditioning and section change planning, and enables a feedback loop to caster cutting strategy. Targets a yield increase."},
+"DSP-6":{area:"Safety",desc:"Addresses the complexity of ensuring consistent PPE usage and safety compliance across a large, diverse workforce. Includes AI-powered PPE detection via video analytics, automatic identification of unsafe acts and hazards, mobile app alerts for deviations and unsafe conditions, SOS alerts with geo-tagging for emergency response, live video/audio recording for incident validation, and a centralized safety dashboard for tracking compliance and workforce safety performance."},
+"DSP-7":{area:"Safety",desc:"Field-level safety observations are often captured manually, leading to delays and incomplete records. This initiative provides real-time capture of safety violations and best practices with geo-location tagging, AI-assisted classification of observations, automatic aggregation and visualization on dashboards, early alerts for critical violations, historical analysis and benchmarking to identify trends and hotspots, and SOP enforcement support for continuous improvement in safety practices."},
+"DSP-8":{area:"SMS",desc:"Predictive model to reduce ferro alloy consumption in SMS by maximizing recovery while ensuring target chemistry, using ML to predict alloy recovery rates, identify high-impact parameters, and recommend optimal dosing via a real-time advisory system."},
+"RSP-1":{area:"Blast Furnace",desc:"The blast furnace fuel rate is elevated, inflating hot metal production cost. This initiative develops a data-driven model linking fuel rate with key operational parameters. Sub-models include silicon prediction and control, heat loss minimization, hot blast parameter optimization, burden charging optimization, oxygen enrichment optimization, and top gas utilization. Targets a fuel rate reduction and a throughput improvement."},
+"RSP-2":{area:"SMS",desc:"Ferro alloy consumption shows considerable variation within the same grade. This initiative develops a predictive model to optimize ferroalloy usage by maximizing recovery while ensuring target chemistry. Includes an ML model to predict alloy recovery rates based on bath temperature, oxygen blowing patterns, slag chemistry, and tapping delay, identification of high-impact parameters influencing poor recovery, and optimal dosing recommendations integrated into a real-time advisory system."},
+"RSP-3":{area:"HSM (Hot Strip Mill)",desc:"The reheating furnace in HSM acts as a major bottleneck, limiting throughput. Loading slabs of different sizes together increases soaking time as smaller slabs wait for larger ones to heat uniformly. This initiative leverages production planning optimization and furnace scheduling intelligence: analyzing historical furnace data, clustering slabs into optimized size/grade batches, simulating different planning scenarios, and generating dynamic slab charging recommendations. Targets a throughput increase."},
+"RSP-4":{area:"Traffic",desc:"Limited visibility into real-time locomotive health restricts early anomaly detection and proactive maintenance planning. This initiative captures real-time data from key systems (engine temperature, oil pressure, vibration, braking performance, fuel efficiency) through IoT sensors, leverages AI/ML models for predictive maintenance, generates health scores for each loco, provides real-time alerts for abnormal trends, integrates with CMMS/ERP for automatic maintenance ticket generation, and enables historical performance analytics."},
+"RSP-5":{area:"Safety",desc:"Addresses the complexity of ensuring consistent PPE usage and safety compliance across a large workforce. Includes AI-powered PPE detection via video analytics, automatic identification of unsafe acts and hazards, mobile app alerts for deviations and unsafe conditions, SOS alerts with geo-tagging for emergency response, live video/audio recording for incident validation, and a centralized safety dashboard for compliance tracking."},
+"RSP-6":{area:"Safety",desc:"Field-level safety observations are often captured manually, leading to delays and incomplete records. This initiative provides real-time capture with geo-location tagging, AI-assisted classification into categories, automatic aggregation and visualization on dashboards, early alerts for critical violations, historical analysis and benchmarking for trend identification, and SOP enforcement support."},
+"ISP-1":{area:"Blast Furnace",desc:"The blast furnace fuel rate is elevated, inflating hot metal production cost. This initiative develops a data-driven model linking fuel rate with key operational parameters to uncover critical contributors to high consumption. Sub-models include silicon prediction and control, heat loss minimization, hot blast parameter optimization, burden charging optimization, oxygen enrichment optimization, and top gas utilization. Targets a reduction in fuel rate and a throughput improvement."},
+"ISP-2":{area:"Sinter Plant",desc:"This initiative focuses on dynamically controlling sinter plant operations to improve line productivity. It involves real-time monitoring and optimization of key process parameters such as bed permeability, burn-through point (BTP), raw mix composition, and ignition parameters to stabilize operations and increase sinter output. The use case leverages advanced analytics for predictive control of operational setpoints."},
+"ISP-3":{area:"USM (Universal Structural Mill)",desc:"The USM sees significant losses from cropping of extra length. This initiative deploys a length prediction model to anticipate short sections and optimize shearing decisions, optimizes rolling parameters to reduce short-length instances, develops operator dashboards for length variability and yield trends, establishes SOPs for billet/bloom conditioning, and enables a feedback loop to caster cutting strategy. Targets an increase in yield."},
+"ISP-4":{area:"Safety",desc:"This initiative addresses the complexity of ensuring consistent PPE usage and safety compliance across a large, diverse workforce. It includes AI-powered PPE detection via video analytics, automatic identification of unsafe acts and potential hazards, mobile app alerts for deviations and unsafe conditions, SOS alerts with geo-tagging for emergency response, live video/audio recording for incident validation, and a centralized safety dashboard for compliance tracking."},
+"MINES-1":{area:"Fleet, Reliability & Monitoring (Bolani)",desc:"An integrated Bolani deployment bundling four components. (1) Fleet Management System (FMS): dispatcher-based centralization of fleet operations to raise utilized OEE of major equipment (excavators, trucks and drills), addressing high day-to-day production variability and a gap in OEE versus median benchmarks. (2) Predictive maintenance: IoT-based health-monitoring sensors on critical motors and equipment for early fault detection, real-time alerts and reduced downtime, improving processing-plant availability and moving maintenance from corrective to predictive. (3) Mine-wide Wi-Fi connectivity: industrial wireless mesh with cellular and fibre backhaul as needed, enabling real-time data flow from equipment and sensors. (4) Central monitoring station: a mine control room with real-time dashboards and central data storage for KPI visualization and data-driven decisions."},
+"MINES-2":{area:"Planning, Blasting & Stock (Bolani)",desc:"An integrated Bolani deployment bundling three levers. (1) Mine planning: software-based mine planning at a daily and weekly level to improve plan compliance and align operations across the value chain. (2) Blasting optimization: software-based blast design and data analytics to increase blasting efficiency and reduce cost. (3) Stock monitoring: drone and fixed-camera based ore stock monitoring and survey to improve ore tracking and transparency, addressing low visibility of multiple stockpiles that leads to pilferage and operational inefficiencies, and enabling regular reconciliation of ore stock."}
+};
+/* ============================================================
+   FIREBASE CONFIG  ——  PASTE YOUR PROJECT SETTINGS HERE
+   Firebase console → Project settings → General → "Your apps" → SDK setup
+   (databaseURL is required — Realtime Database, not Firestore)
+   ============================================================ */
+const FIREBASE_CONFIG = {
+  apiKey: "PASTE_API_KEY",
+  authDomain: "PASTE_PROJECT.firebaseapp.com",
+  databaseURL: "https://PASTE_PROJECT-default-rtdb.firebaseio.com",
+  projectId: "PASTE_PROJECT_ID"
+};
+
+const boardKey=id=>"boards/"+id;
+const bakKey=id=>"backups/"+id;
+const INDEX_PATH="index";
+const BACKUP_MAX=20;
+
+const STATUSES=[{k:"idle",label:"Not started"},{k:"active",label:"In progress"},{k:"done",label:"Done"},{k:"blocked",label:"Blocked"},{k:"hold",label:"On hold"}];
+const STATUS_ORDER=["idle","active","done","blocked","hold"];
+const BOX_KINDS=["Gate","Decision","Review","Risk","Dependency","Task","Note"];
+const DEFAULT_MILESTONES=["Data Collection","Initiative Start","Model Development","Cold Trials","Hot Trials","Go-Live","Performance Period Starts","Performance Period Ends","Handover"];
+
+let hasStore=false, db=null, boardUnsub=null, nav={}, currentId=null, activePlant="BSL", state=null, knownRev=0, myName="",
+    isEditing=false, pendingRemote=null, backups=[], lastSaved=null,
+    openPlants=new Set(), boardCache={}, bakCache={}, lastPop=null;
+let uid=Math.floor(Math.random()*1e6);
+const nextId=()=>(uid++).toString(36)+Date.now().toString(36).slice(-3);
+
+/* ---------- helpers ---------- */
+function deep(x){return JSON.parse(JSON.stringify(x));}
+function esc(s){return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function fmtTs(ms){const d=new Date(ms||Date.now()),p=n=>String(n).padStart(2,"0");return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;}
+function stamp(){return fmtTs(Date.now());}
+function today(){const d=new Date(),M=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];return `${d.getDate()} ${M[d.getMonth()]} ${d.getFullYear()}`;}
+function statusLabel(k){const s=STATUSES.find(x=>x.k===k);return s?s.label:k;}
+function normNav(o){const n={};PLANTS.forEach(p=>{n[p]=toArr(o&&o[p]);});return n;}
+function toArr(x){if(Array.isArray(x))return x;if(x&&typeof x==="object")return Object.keys(x).sort((a,b)=>(+a)-(+b)).map(k=>x[k]);return [];}
+function normBoard(b){b.milestones=toArr(b.milestones);b.milestones.forEach(m=>{m.updates=toArr(m.updates);});b.boxes=toArr(b.boxes);b.boxes.forEach(x=>{x.updates=toArr(x.updates);});return b;}
+function plantOf(id){for(const p of PLANTS)if((nav[p]||[]).some(u=>u.id===id))return p;return null;}
+function useCaseName(id){for(const p of PLANTS){const u=(nav[p]||[]).find(x=>x.id===id);if(u)return u.name;}return "Use case";}
+function findUC(id){return !!plantOf(id);}
+
+/* ---------- Firebase Realtime Database ---------- */
+async function sGet(path){if(!db)return null;try{const snap=await db.ref(path).get();return snap.exists()?snap.val():null;}catch(e){return null;}}
+async function sSet(path,val){if(!db)return false;try{await db.ref(path).set(val);return true;}catch(e){return false;}}
+async function sDel(path){if(!db)return;try{await db.ref(path).remove();}catch(e){}}
+const storeGet=()=>sGet(boardKey(currentId));
+const storeSet=st=>sSet(boardKey(currentId),st);
+
+/* ---------- index (plant -> use cases) ---------- */
+async function mutateIndex(fn){
+  if(hasStore){const latest=await sGet(INDEX_PATH);if(latest)nav=normNav(latest);}
+  fn(nav);
+  if(hasStore) await sSet(INDEX_PATH,nav);
+  renderNav();
+}
+function addUseCase(plant,name){
+  name=(name||"").trim(); if(!name) return;
+  const id=plant+"-"+nextId();
+  openPlants.add(plant);
+  mutateIndex(n=>{(n[plant]=n[plant]||[]).push({id,name});}).then(()=>openUseCase(id));
+}
+function deleteUseCase(plant,id){
+  const nm=useCaseName(id);
+  if(!confirm(`Delete use case "${nm}" and its update tree for everyone? This can’t be undone.`)) return;
+  mutateIndex(n=>{n[plant]=(n[plant]||[]).filter(u=>u.id!==id);});
+  sDel(boardKey(id)); sDel(bakKey(id)); delete boardCache[id]; delete bakCache[id];
+  if(currentId===id){currentId=null;state=null;backups=[];showBoard(false);location.hash="";}
+}
+function renameUseCase(id,name){mutateIndex(n=>{for(const p of PLANTS){const u=(n[p]||[]).find(x=>x.id===id);if(u){u.name=name;break;}}});}
+
+/* ---------- state model ---------- */
+function freshState(title){
+  return {v:1,rev:0,updatedAt:Date.now(),updatedBy:"",
+    title:title||"Untitled Use Case",
+    meta:{programme:"Pravartanam",owner:"",domain:"",ref:""},
+    milestones:DEFAULT_MILESTONES.map((n,i)=>({id:"m"+(i+1),name:n,status:"idle",updates:[]})),
+    boxes:[]};
+}
+
+/* ---------- backups ---------- */
+async function pushBackup(snap){
+  if(hasStore){const latest=await sGet(bakKey(currentId));if(Array.isArray(latest))backups=latest;}
+  backups.unshift(snap);
+  if(backups.length>BACKUP_MAX) backups.length=BACKUP_MAX;
+  if(hasStore) await sSet(bakKey(currentId),backups); else bakCache[currentId]=backups;
+  updateBackupIndicator();
+}
+function updateBackupIndicator(){const el=document.getElementById("bkstat");if(el)el.textContent=backups.length?("Last backup "+backups[0].t):"No backup yet";}
+
+/* ---------- save / navigation ---------- */
+function syncHash(){try{history.replaceState(null,"","#u="+encodeURIComponent(currentId||""));}catch(e){}}
+async function save(){
+  if(!currentId) return;
+  if(lastSaved){await pushBackup({t:fmtTs(lastSaved.updatedAt),by:lastSaved.updatedBy||"—",rev:lastSaved.rev||0,data:lastSaved});}
+  state.rev=(state.rev||0)+1; state.updatedAt=Date.now(); state.updatedBy=myName||"someone";
+  knownRev=state.rev;
+  render();
+  if(hasStore){setSync("saving");const ok=await storeSet(state);setSync(ok?"saved":"err");}
+  else boardCache[currentId]=deep(state);
+  lastSaved=deep(state);
+}
+async function openUseCase(id){
+  if(!findUC(id)) return;
+  currentId=id;
+  let b = hasStore ? await sGet(boardKey(id)) : (boardCache[id]||null);
+  if(!b){ b=freshState(useCaseName(id)); if(hasStore) await sSet(boardKey(id),b); else boardCache[id]=b; }
+  else { b=normBoard(b); b.title=useCaseName(id); }   /* keep board title in step with nav name */
+  state=b; knownRev=b.rev||0; lastPop=null;
+  backups = hasStore ? toArr(await sGet(bakKey(id))) : (bakCache[id]||[]);
+  lastSaved=deep(state);
+  const p=plantOf(id); if(p){activePlant=p;openPlants.add(p);}
+  syncHash(); showBoard(true); renderNav(); render(); updateBackupIndicator(); setSync("saved");
+  if(hasStore) listenBoard(id);
+  document.getElementById("boardWrap").scrollIntoView({behavior:"smooth",block:"start"});
+}
+function showBoard(on){document.getElementById("boardWrap").hidden=!on;document.getElementById("boardHint").hidden=on;}
+
+/* ---------- realtime sync ---------- */
+function detachBoard(){if(boardUnsub){boardUnsub();boardUnsub=null;}}
+function listenIndex(){
+  db.ref(INDEX_PATH).on("value",snap=>{
+    const v=snap.val(); if(!v) return;
+    const nn=normNav(v);
+    if(JSON.stringify(nn)!==JSON.stringify(nav)){nav=nn;renderNav();}
+  });
+}
+function listenBoard(id){
+  detachBoard();
+  const r=db.ref(boardKey(id));
+  const cb=r.on("value",snap=>{
+    const remote=snap.val(); if(!remote) return;
+    if((remote.rev||0)>(knownRev||0)){
+      if(isEditing){pendingRemote=remote;setSync("update-waiting");}
+      else adopt(remote);
+    }
+  });
+  boardUnsub=()=>r.off("value",cb);
+}
+function adopt(remote){
+  remote=normBoard(remote);
+  state=remote; knownRev=remote.rev||0; pendingRemote=null; lastSaved=deep(state); lastPop=null;
+  render(); setSync("saved"); updateBackupIndicator();
+  toast("Updated by "+(remote.updatedBy||"a collaborator"));
+}
+
+/* ---------- sync indicator ---------- */
+function setSync(kind){
+  const dot=document.getElementById("dotstat"),t=document.getElementById("sync");
+  if(!dot) return; dot.className="dotstat";
+  const when=state&&state.updatedAt?new Date(state.updatedAt):null;
+  const hhmm=when?String(when.getHours()).padStart(2,"0")+":"+String(when.getMinutes()).padStart(2,"0"):"";
+  if(!hasStore){dot.classList.add("local");t.textContent="";return;}
+  if(kind==="saving"){dot.classList.add("saving");t.textContent="Saving…";}
+  else if(kind==="err"){dot.classList.add("err");t.textContent="Couldn't reach shared store — retrying on next change";}
+  else if(kind==="update-waiting"){dot.classList.add("ok");t.textContent="New edit from a collaborator (applies when you finish typing)";}
+  else {dot.classList.add("ok");t.textContent="Shared \u00b7 saved"+(hhmm?" \u00b7 last change "+hhmm+(state.updatedBy?" by "+state.updatedBy:""):"");}
+}
+
+/* ============================================================ NAV RENDER */
+function renderNav(){
+  const nv=document.getElementById("nav");
+  const tabs=PLANTS.map(p=>{
+    const n=(nav[p]||[]).length;
+    return `<div class="tab${p===activePlant?" active":""}" data-tab="${p}">${p}<span class="cnt">${n}</span></div>`;
+  }).join("");
+  const list=nav[activePlant]||[];
+  const opts=[`<option value="">${list.length?`— select a use case (${list.length}) —`:"— no use cases yet, add one —"}</option>`]
+    .concat(list.map(uc=>`<option value="${uc.id}" ${uc.id===currentId?"selected":""}>${esc(uc.name)}</option>`)).join("");
+  nv.innerHTML=`
+    <div class="ribbon">${tabs}</div>
+    <div class="planttools">
+      <span class="lbl">${activePlant} &middot; Use case</span>
+      <select class="uc-select" data-role="ucselect">${opts}</select>
+      <button class="mini" data-role="adduc">+ New</button>
+      <div class="uc-addrow" data-addrow hidden><input type="text" data-addinput placeholder="New use case name — press Enter" maxlength="140"><button class="mini" data-role="addgo">Add</button></div>
+    </div>`;
+}
+
+/* ============================================================ BOARD RENDER */
+function render(){
+  if(!currentId||!state) return;
+  const p=plantOf(currentId);
+  const det=DETAILS[currentId];
+  const area=det?det.area:"";
+  document.getElementById("plantTag").textContent=(p||"")+(area?" \u00b7 "+area:(p?" \u00b7 Use case":"Use case"));
+  document.getElementById("title").textContent=state.title||"Untitled Use Case";
+
+  const ud=document.getElementById("ucDetails");
+  if(det){
+    ud.innerHTML=`<div class="ucdesc">${esc(det.desc)}</div>`;
+  } else {
+    ud.innerHTML=`<div class="ucnote">No initiative details on file for this use case.</div>`;
+  }
+
+  const cc={done:0,active:0,blocked:0};
+  state.milestones.forEach(m=>{if(cc[m.status]!==undefined)cc[m.status]++;});
+  const total=state.milestones.length;
+  let cur=-1; state.milestones.forEach((m,i)=>{if(m.status!=="idle")cur=i;});
+  const cs=document.getElementById("curStage");
+  if(cur>=0){const m=state.milestones[cur];cs.innerHTML=`<span class="cs-ey">Current stage</span><span class="cs-name"><span class="cs-num">Stage ${cur+1}</span> &middot; ${esc(m.name)}</span><span class="cs-status s-${m.status}">${statusLabel(m.status)}</span>`;}
+  else {cs.innerHTML=`<span class="cs-ey">Current stage</span><span class="cs-name">Not started</span>`;}
+  document.getElementById("bar").innerHTML=state.milestones.map((m,i)=>
+    `<div class="segwrap${i===cur?" cur":""}"><div class="seg s-${m.status}${i===cur?" cur":""}" title="${i+1}. ${esc(m.name)} — ${statusLabel(m.status)}"></div><div class="seglbl">${esc(m.name)}</div></div>`
+  ).join("");
+  document.getElementById("pcount").textContent=`${cc.done} / ${total} done`+(cc.blocked?`  \u00b7  ${cc.blocked} blocked`:"");
+
+  const spine=document.getElementById("spine"); spine.innerHTML="";
+  boxesAfter(-1).forEach(b=>spine.appendChild(boxNode(b)));
+  spine.appendChild(slot(-1));
+  state.milestones.forEach((m,i)=>{spine.appendChild(mNode(m,i));boxesAfter(i).forEach(b=>spine.appendChild(boxNode(b)));spine.appendChild(slot(i));});
+  syncHash();
+}
+function findM(id){return state.milestones.find(m=>m.id===id);}
+function findB(id){return state.boxes.find(b=>b.id===id);}
+function boxesAfter(i){return state.boxes.filter(b=>b.after===i);}
+
+function mNode(m,i){
+  const n=document.createElement("div");n.className="node";
+  const be=m.status==="blocked"?" blocked-edge":"";
+  n.innerHTML=`
+    <div class="dot s-${m.status}" data-act="cycle" data-id="${m.id}" title="Click to change status">${i+1}</div>
+    <div class="card${be}">
+      <div class="row1">
+        <div class="stagename" contenteditable="true" spellcheck="false" data-edit="name" data-id="${m.id}">${esc(m.name)}</div>
+        <select class="status" data-edit="status" data-id="${m.id}">${STATUSES.map(s=>`<option value="${s.k}" ${s.k===m.status?"selected":""}>${s.label}</option>`).join("")}</select>
+      </div>
+      ${updatesBlock(m,"m")}
+      <div class="cardactions"><button class="mini" data-act="add-update" data-scope="m" data-id="${m.id}">+ Add update</button></div>
+      <div class="addform" data-form="m-${m.id}"><input type="text" placeholder="Type the update, then press Enter…" data-input="m-${m.id}"></div>
+    </div>`;
+  return n;
+}
+function boxNode(b){
+  const n=document.createElement("div");n.className="node";
+  n.innerHTML=`
+    <div class="dot box-dot s-${b.status}" data-act="cycle-box" data-id="${b.id}" title="Click to change status"></div>
+    <div class="card boxcard">
+      <div class="row1">
+        <div class="stagename" contenteditable="true" spellcheck="false" data-edit="box-title" data-id="${b.id}">${esc(b.title)}</div>
+        <span class="kindtag">${esc(b.kind)}</span>
+        <select class="status" data-edit="box-status" data-id="${b.id}">${STATUSES.map(s=>`<option value="${s.k}" ${s.k===b.status?"selected":""}>${s.label}</option>`).join("")}</select>
+      </div>
+      <div class="meta2"><span class="m" style="flex:1"><label>Note</label><span class="v" style="flex:1" contenteditable="true" spellcheck="false" data-edit="box-text" data-id="${b.id}">${esc(b.text)||"—"}</span></span></div>
+      ${updatesBlock(b,"b")}
+      <div class="cardactions">
+        <button class="mini" data-act="add-update" data-scope="b" data-id="${b.id}">+ Add update</button>
+        <button class="mini danger" data-act="del-box" data-id="${b.id}">Remove box</button>
+      </div>
+      <div class="addform" data-form="b-${b.id}"><input type="text" placeholder="Type the update, then press Enter…" data-input="b-${b.id}"></div>
+    </div>`;
+  return n;
+}
+function updatesBlock(item,scope){
+  if(!item.updates||!item.updates.length) return `<div class="updates"><div class="noupdates">No updates yet.</div></div>`;
+  const rows=item.updates.map((u,idx)=>`
+    <div class="update">
+      <span class="ts">${esc(u.t)}</span>
+      ${u.by?`<span class="who">${esc(u.by)}</span>`:""}
+      <span class="txt" contenteditable="true" spellcheck="false" data-edit="update" data-scope="${scope}" data-id="${item.id}" data-idx="${idx}">${esc(u.text)}</span>
+      <button class="del" data-act="del-update" data-scope="${scope}" data-id="${item.id}" data-idx="${idx}" title="Delete update">×</button>
+    </div>`).join("");
+  return `<div class="updates">${rows}</div>`;
+}
+function slot(after){
+  const d=document.createElement("div");
+  d.innerHTML=`
+    <div class="slot"><button data-act="show-picker" data-after="${after}">+ box here</button></div>
+    <div class="picker" data-picker="${after}">${BOX_KINDS.map(k=>`<button data-act="add-box" data-after="${after}" data-kind="${k}">${k}</button>`).join("")}</div>`;
+  return d;
+}
+
+/* ============================================================ NAV EVENTS */
+const navEl=document.getElementById("nav");
+navEl.addEventListener("click",e=>{
+  const tab=e.target.closest("[data-tab]");
+  if(tab){
+    if(tab.dataset.tab!==activePlant){
+      activePlant=tab.dataset.tab;
+      if(currentId){                       /* clear the previously displayed use case */
+        detachBoard();
+        currentId=null; state=null; backups=[]; lastPop=null;
+        showBoard(false);
+        document.getElementById("restorePanel").hidden=true;
+        try{history.replaceState(null,"",location.pathname+location.search);}catch(err){}
+      }
+    }
+    renderNav();
+    return;
+  }
+  const role=e.target.closest("[data-role]"); if(!role) return;
+  const r=role.dataset.role;
+  if(r==="adduc"){const row=navEl.querySelector("[data-addrow]");row.hidden=!row.hidden;if(!row.hidden){const i=row.querySelector("[data-addinput]");i.value="";i.focus();}}
+  else if(r==="addgo"){const i=navEl.querySelector("[data-addinput]");if(i&&i.value.trim())addUseCase(activePlant,i.value);}
+});
+navEl.addEventListener("change",e=>{
+  const sel=e.target.closest("select[data-role=ucselect]"); if(!sel) return;
+  if(sel.value) openUseCase(sel.value);
+});
+navEl.addEventListener("keydown",e=>{
+  const i=e.target.closest("[data-addinput]"); if(!i||e.key!=="Enter") return;
+  e.preventDefault(); if(i.value.trim()) addUseCase(activePlant,i.value);
+});
+
+/* ============================================================ BOARD EVENTS */
+const spine=document.getElementById("spine");
+spine.addEventListener("click",e=>{
+  const t=e.target.closest("[data-act]"); if(!t) return; const a=t.dataset.act;
+  if(a==="cycle"){const m=findM(t.dataset.id);m.status=STATUS_ORDER[(STATUS_ORDER.indexOf(m.status)+1)%STATUS_ORDER.length];save();}
+  else if(a==="cycle-box"){const b=findB(t.dataset.id);b.status=STATUS_ORDER[(STATUS_ORDER.indexOf(b.status)+1)%STATUS_ORDER.length];save();}
+  else if(a==="show-picker"){const p=document.querySelector(`.picker[data-picker="${t.dataset.after}"]`);document.querySelectorAll(".picker.open").forEach(x=>{if(x!==p)x.classList.remove("open");});p.classList.toggle("open");}
+  else if(a==="add-box"){state.boxes.push({id:"x"+nextId(),after:parseInt(t.dataset.after,10),kind:t.dataset.kind,title:t.dataset.kind+" — untitled",status:"idle",text:"",updates:[]});save();}
+  else if(a==="del-box"){state.boxes=state.boxes.filter(b=>b.id!==t.dataset.id);save();}
+  else if(a==="add-update"){const f=document.querySelector(`.addform[data-form="${t.dataset.scope}-${t.dataset.id}"]`);f.classList.add("open");const inp=f.querySelector("input");inp.value=today()+" — ";inp.focus();inp.setSelectionRange(inp.value.length,inp.value.length);}
+  else if(a==="del-update"){const it=t.dataset.scope==="m"?findM(t.dataset.id):findB(t.dataset.id);it.updates.splice(parseInt(t.dataset.idx,10),1);save();}
+});
+spine.addEventListener("keydown",e=>{
+  const inp=e.target.closest("input[data-input]"); if(!inp||e.key!=="Enter") return;
+  e.preventDefault(); const val=inp.value.trim(); if(!val) return;
+  const [scope,id]=inp.dataset.input.split(/-(.+)/);
+  const it=scope==="m"?findM(id):findB(id);
+  it.updates.unshift({t:stamp(),text:val,by:myName||""}); save();
+});
+spine.addEventListener("focusin",e=>{if(e.target.closest("[contenteditable],input"))isEditing=true;});
+spine.addEventListener("focusout",()=>{setTimeout(()=>{isEditing=false;if(pendingRemote)adopt(pendingRemote);},50);});
+spine.addEventListener("blur",e=>{
+  const el=e.target.closest("[data-edit]"); if(!el) return;
+  const k=el.dataset.edit, txt=el.textContent.replace(/\u00a0/g," ").trim();
+  if(k==="name")findM(el.dataset.id).name=txt;
+  else if(k==="box-title")findB(el.dataset.id).title=txt;
+  else if(k==="box-text")findB(el.dataset.id).text=txt==="—"?"":txt;
+  else if(k==="update"){const it=el.dataset.scope==="m"?findM(el.dataset.id):findB(el.dataset.id);it.updates[parseInt(el.dataset.idx,10)].text=txt;}
+  else return; save();
+},true);
+spine.addEventListener("change",e=>{
+  const s=e.target.closest("select[data-edit]"); if(!s) return;
+  if(s.dataset.edit==="status")findM(s.dataset.id).status=s.value;
+  else if(s.dataset.edit==="box-status")findB(s.dataset.id).status=s.value;
+  save();
+});
+
+const titleEl=document.getElementById("title");
+titleEl.addEventListener("blur",e=>{const nm=e.target.textContent.trim()||"Untitled Use Case";state.title=nm;renameUseCase(currentId,nm);save();});
+titleEl.addEventListener("focusin",()=>isEditing=true);
+titleEl.addEventListener("focusout",()=>setTimeout(()=>{isEditing=false;if(pendingRemote)adopt(pendingRemote);},50));
+
+const nameInput=document.getElementById("editorName");
+nameInput.addEventListener("input",()=>{myName=nameInput.value.trim();});
+
+function toast(msg){const t=document.getElementById("toast");t.textContent=msg;t.classList.add("show");clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove("show"),1700);}
+document.addEventListener("click",e=>{if(!e.target.closest(".slot")&&!e.target.closest(".picker"))document.querySelectorAll(".picker.open").forEach(p=>p.classList.remove("open"));});
+
+/* ---------- restore ---------- */
+async function openRestore(){
+  const panel=document.getElementById("restorePanel");
+  if(!panel.hidden){panel.hidden=true;return;}
+  if(hasStore){const b=await sGet(bakKey(currentId));if(Array.isArray(b))backups=b;updateBackupIndicator();}
+  renderRestore(); panel.hidden=false;
+}
+function renderRestore(){
+  const panel=document.getElementById("restorePanel");
+  if(!backups.length){panel.innerHTML=`<h4>Restore a backup</h4><div class="restore-empty">No backups yet — one is captured automatically before each update.</div>`;return;}
+  const rows=backups.map((s,i)=>`<div class="restore-row"><span class="rmeta"><b>${esc(s.t)}</b> &middot; ${esc(s.by||"—")} &middot; rev ${s.rev}${i===0?" &middot; most recent":""}</span><button class="mini" data-restore="${i}">Restore this</button></div>`).join("");
+  panel.innerHTML=`<h4>Restore a backup &middot; ${backups.length} kept</h4>${rows}`;
+}
+document.getElementById("restoreBtn").addEventListener("click",openRestore);
+document.getElementById("restorePanel").addEventListener("click",e=>{
+  const b=e.target.closest("[data-restore]"); if(!b) return;
+  const snap=backups[parseInt(b.dataset.restore,10)]; if(!snap) return;
+  if(confirm(`Restore this use case to the backup from ${snap.t}? The current board is backed up first, so this is undoable too.`)){
+    state=deep(snap.data); save();
+    document.getElementById("restorePanel").hidden=true; toast("Restored backup from "+snap.t);
+  }
+});
+
+/* ============================================================ BOOT */
+function mergeSeed(n){
+  let changed=false;
+  for(const p of PLANTS){
+    const have=new Set((n[p]||[]).map(u=>u.id));
+    (SEED[p]||[]).forEach((name,i)=>{const id=`${p}-${i+1}`;if(!have.has(id)){(n[p]=n[p]||[]).push({id,name});changed=true;}});
+  }
+  return changed;
+}
+function initFirebase(){
+  const cfg=FIREBASE_CONFIG;
+  if(!window.firebase || !cfg.databaseURL || /PASTE/.test(cfg.apiKey+cfg.databaseURL)) return false;
+  try{
+    firebase.initializeApp(cfg);
+    db=firebase.database();
+    if(firebase.auth) firebase.auth().signInAnonymously().catch(()=>{});  /* works with auth!=null rules; harmless if rules are open */
+    return true;
+  }catch(e){ return false; }
+}
+function showSetupBanner(){}
+(async function boot(){
+  hasStore=initFirebase();
+  const idx = hasStore ? await sGet(INDEX_PATH) : null;
+  if(idx){ nav=normNav(idx); if(mergeSeed(nav)&&hasStore) await sSet(INDEX_PATH,nav); }
+  else { nav=seedNav(); if(hasStore) await sSet(INDEX_PATH,nav); }   /* first load seeds from the file */
+  renderNav();
+  if(hasStore) listenIndex();
+  const m=location.hash.match(/u=([^&]+)/);
+  if(m){const id=decodeURIComponent(m[1]);if(findUC(id))await openUseCase(id);}
+})();
+</script>
+</body>
+</html>
