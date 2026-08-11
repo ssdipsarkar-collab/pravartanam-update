@@ -53,8 +53,12 @@
   .uc-dd-item:hover{background:#EFF4F6}
   .uc-dd-item.active{background:var(--steel);color:#fff}
   .uc-dd .ucn{flex:1;min-width:0}
-  .uc-dd .ucs{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--steel);white-space:nowrap;text-align:right}
-  .uc-dd-item.active .ucs{color:#dbe9ee}
+  .uc-dd .ucs{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--idle);white-space:nowrap;text-align:right}
+  .uc-dd .ucs.s-active{color:var(--active)}
+  .uc-dd .ucs.s-done{color:var(--done)}
+  .uc-dd .ucs.s-blocked{color:var(--blocked)}
+  .uc-dd .ucs.s-hold{color:var(--hold)}
+  .uc-dd-item.active .ucs{color:#eaf3f6!important}
   .uc-dd-empty{padding:10px 12px;color:var(--idle);font-style:italic;font-size:13px}
   .uc-addrow{display:flex;gap:8px;flex-basis:100%;margin-top:2px}
   .uc-addrow[hidden]{display:none}
@@ -383,7 +387,22 @@ function plantOf(id){for(const p of PLANTS)if((nav[p]||[]).some(u=>u.id===id))re
 function useCaseName(id){for(const p of PLANTS){const u=(nav[p]||[]).find(x=>x.id===id);if(u)return u.name;}return "Use case";}
 function findUC(id){return !!plantOf(id);}
 function currentStage(st){if(!st||!st.milestones)return null;let cur=-1;st.milestones.forEach((m,i)=>{if(m.status!=="idle")cur=i;});if(cur<0)return null;const m=st.milestones[cur];return {n:cur+1,name:m.name,status:m.status};}
+/* Union of two update lists so no dated update is ever lost under concurrent edits */
+function mergeUpdates(a,b){
+  const map={},order=[];
+  (a||[]).concat(b||[]).forEach(u=>{const key=u.id||((u.t||"")+"|"+(u.text||""));if(!(key in map)){map[key]=u;order.push(key);}});
+  return order.map(k=>map[k]).sort((x,y)=>(y.t||"").localeCompare(x.t||""));
+}
+function mergeBoardUpdates(base,other){
+  if(!base||!other) return base;
+  const om={}; (other.milestones||[]).forEach(m=>om[m.id]=m);
+  (base.milestones||[]).forEach(m=>{const o=om[m.id];if(o)m.updates=mergeUpdates(m.updates,o.updates);});
+  const ob={}; (other.boxes||[]).forEach(b=>ob[b.id]=b);
+  (base.boxes||[]).forEach(b=>{const o=ob[b.id];if(o)b.updates=mergeUpdates(b.updates,o.updates);});
+  return base;
+}
 function navStatusText(id){const c=statusMap[id];return c?c.name:"not started";}
+function navStatusClass(id){const c=statusMap[id];return c?c.status:"idle";}
 async function loadAllStatuses(){
   if(!sb) return;
   const ids=[]; PLANTS.forEach(p=>(nav[p]||[]).forEach(u=>ids.push(u.id)));
@@ -456,6 +475,7 @@ function updateBackupIndicator(){const el=document.getElementById("bkstat");if(e
 function syncHash(){try{history.replaceState(null,"","#u="+encodeURIComponent(currentId||""));}catch(e){}}
 async function save(){
   if(!currentId) return;
+  if(hasStore){ const remote=await storeGet(); if(remote) mergeBoardUpdates(state,normBoard(remote)); }  /* preserve others' updates */
   if(lastSaved){await pushBackup({t:fmtTs(lastSaved.updatedAt),by:lastSaved.updatedBy||"—",rev:lastSaved.rev||0,data:lastSaved});}
   state.rev=(state.rev||0)+1; state.updatedAt=Date.now(); state.updatedBy=myName||"someone";
   knownRev=state.rev;
@@ -506,6 +526,7 @@ function startRealtime(){
 }
 function adopt(remote){
   remote=normBoard(remote);
+  if(state) mergeBoardUpdates(remote,state);   /* keep our updates too */
   state=remote; knownRev=remote.rev||0; pendingRemote=null; lastSaved=deep(state); lastPop=null;
   render(); setSync("saved"); updateBackupIndicator();
   toast("Updated by "+(remote.updatedBy||"a collaborator"));
@@ -534,10 +555,10 @@ function renderNav(){
   const list=nav[activePlant]||[];
   const sel = currentId ? list.find(u=>u.id===currentId) : null;
   const btnInner = sel
-    ? `<span class="ucn">${esc(sel.name)}</span><span class="ucs">${esc(navStatusText(sel.id))}</span>`
+    ? `<span class="ucn">${esc(sel.name)}</span><span class="ucs s-${navStatusClass(sel.id)}">${esc(navStatusText(sel.id))}</span>`
     : `<span class="ph ucn">${list.length?`Select a use case (${list.length})`:"No use cases yet — add one"}</span>`;
   const items = list.length
-    ? list.map(uc=>`<div class="uc-dd-item${uc.id===currentId?" active":""}" data-uc="${uc.id}"><span class="ucn">${esc(uc.name)}</span><span class="ucs">${esc(navStatusText(uc.id))}</span></div>`).join("")
+    ? list.map(uc=>`<div class="uc-dd-item${uc.id===currentId?" active":""}" data-uc="${uc.id}"><span class="ucn">${esc(uc.name)}</span><span class="ucs s-${navStatusClass(uc.id)}">${esc(navStatusText(uc.id))}</span></div>`).join("")
     : `<div class="uc-dd-empty">No use cases yet.</div>`;
   nv.innerHTML=`
     <div class="ribbon">${tabs}</div>
@@ -693,7 +714,7 @@ spine.addEventListener("keydown",e=>{
   e.preventDefault(); const val=inp.value.trim(); if(!val) return;
   const [scope,id]=inp.dataset.input.split(/-(.+)/);
   const it=scope==="m"?findM(id):findB(id);
-  it.updates.unshift({t:stamp(),text:val,by:myName||""}); save();
+  it.updates.unshift({id:"u"+nextId(),t:stamp(),text:val,by:myName||""}); save();
 });
 spine.addEventListener("focusin",e=>{if(e.target.closest("[contenteditable],input"))isEditing=true;});
 spine.addEventListener("focusout",()=>{setTimeout(()=>{isEditing=false;if(pendingRemote)adopt(pendingRemote);},50);});
