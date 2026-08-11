@@ -41,8 +41,21 @@
   .planttools{border:1px solid var(--steel);border-top:none;background:var(--card);border-radius:0 0 var(--radius) var(--radius);
        padding:14px 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;position:relative;top:-1px}
   .planttools .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--idle)}
-  .uc-select{flex:1;min-width:220px;font-family:var(--sans);font-size:14px;border:1px solid var(--line);border-radius:8px;padding:9px 11px;background:var(--card);color:var(--ink);cursor:pointer}
-  .uc-select:focus{outline:none;border-color:var(--steel)}
+  .uc-dd{position:relative;flex:1;min-width:240px}
+  .uc-dd-btn{width:100%;text-align:left;display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:8px;padding:9px 12px;background:var(--card);color:var(--ink);cursor:pointer;font-family:var(--sans);font-size:14px}
+  .uc-dd-btn:hover{border-color:var(--steel)}
+  .uc-dd-btn .ph{color:var(--idle)}
+  .uc-dd-btn .caret{margin-left:6px;color:var(--idle);font-size:11px}
+  .uc-dd-menu{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:30;background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.14);max-height:360px;overflow:auto;display:none}
+  .uc-dd.open .uc-dd-menu{display:block}
+  .uc-dd-item{display:flex;align-items:center;gap:16px;padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--line-soft)}
+  .uc-dd-item:last-child{border-bottom:none}
+  .uc-dd-item:hover{background:#EFF4F6}
+  .uc-dd-item.active{background:var(--steel);color:#fff}
+  .uc-dd .ucn{flex:1;min-width:0}
+  .uc-dd .ucs{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--steel);white-space:nowrap;text-align:right}
+  .uc-dd-item.active .ucs{color:#dbe9ee}
+  .uc-dd-empty{padding:10px 12px;color:var(--idle);font-style:italic;font-size:13px}
   .uc-addrow{display:flex;gap:8px;flex-basis:100%;margin-top:2px}
   .uc-addrow[hidden]{display:none}
   .uc-addrow input{flex:1;border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:14px;font-family:var(--sans)}
@@ -207,17 +220,15 @@
 
 <div class="toast" id="toast"></div>
 
-<!-- Firebase Web SDK (compat) -->
-<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-database-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+<!-- Supabase JS client -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <script>
 /* ============================================================
    PRAVARTANAM USE CASE UPDATE TRACKER
    Plant -> Use case navigation; each use case is its own shared board
-   backed by Firebase Realtime Database, with a rolling backup history.
-   Falls back to in-session single-user mode if Firebase isn't configured.
+   backed by Supabase (Postgres) with realtime sync and a rolling backup history.
+   Falls back to in-session single-user mode if Supabase isn't configured.
    ============================================================ */
 
 const PLANTS=["BSL","BSP","DSP","RSP","ISP","MINES","CENTRAL"];
@@ -273,7 +284,14 @@ const SEED={
     "Bolani — FMS, Predictive Maintenance, Wi-Fi & Central Monitoring Station",
     "Bolani — Mine Planning, Blasting Optimization & Stock Monitoring"
   ],
-  CENTRAL:[]
+  CENTRAL:[
+    "Iron Ore Freight Cost Improvement",
+    "Coal Freight Optimization — Coal Base Freight Improvement",
+    "Coal Freight Optimization — Differential Coal Freight Improvement",
+    "NEP Calculation, Simulation & Analysis — NSR Rationalization",
+    "Value Leakage Minimization — Reduce Inventory Ageing",
+    "Inventory Optimization"
+  ]
 };
 function seedNav(){const n=normNav(null);for(const p of PLANTS){(SEED[p]||[]).forEach((name,i)=>n[p].push({id:`${p}-${i+1}`,name}));}return n;}
 
@@ -315,33 +333,39 @@ const DETAILS={
 "ISP-3":{area:"USM (Universal Structural Mill)",desc:"The USM sees significant losses from cropping of extra length. This initiative deploys a length prediction model to anticipate short sections and optimize shearing decisions, optimizes rolling parameters to reduce short-length instances, develops operator dashboards for length variability and yield trends, establishes SOPs for billet/bloom conditioning, and enables a feedback loop to caster cutting strategy. Targets an increase in yield."},
 "ISP-4":{area:"Safety",desc:"This initiative addresses the complexity of ensuring consistent PPE usage and safety compliance across a large, diverse workforce. It includes AI-powered PPE detection via video analytics, automatic identification of unsafe acts and potential hazards, mobile app alerts for deviations and unsafe conditions, SOS alerts with geo-tagging for emergency response, live video/audio recording for incident validation, and a centralized safety dashboard for compliance tracking."},
 "MINES-1":{area:"Fleet, Reliability & Monitoring (Bolani)",desc:"An integrated Bolani deployment bundling four components. (1) Fleet Management System (FMS): dispatcher-based centralization of fleet operations to raise utilized OEE of major equipment (excavators, trucks and drills), addressing high day-to-day production variability and a gap in OEE versus median benchmarks. (2) Predictive maintenance: IoT-based health-monitoring sensors on critical motors and equipment for early fault detection, real-time alerts and reduced downtime, improving processing-plant availability and moving maintenance from corrective to predictive. (3) Mine-wide Wi-Fi connectivity: industrial wireless mesh with cellular and fibre backhaul as needed, enabling real-time data flow from equipment and sensors. (4) Central monitoring station: a mine control room with real-time dashboards and central data storage for KPI visualization and data-driven decisions."},
-"MINES-2":{area:"Planning, Blasting & Stock (Bolani)",desc:"An integrated Bolani deployment bundling three levers. (1) Mine planning: software-based mine planning at a daily and weekly level to improve plan compliance and align operations across the value chain. (2) Blasting optimization: software-based blast design and data analytics to increase blasting efficiency and reduce cost. (3) Stock monitoring: drone and fixed-camera based ore stock monitoring and survey to improve ore tracking and transparency, addressing low visibility of multiple stockpiles that leads to pilferage and operational inefficiencies, and enabling regular reconciliation of ore stock."}
+"MINES-2":{area:"Planning, Blasting & Stock (Bolani)",desc:"An integrated Bolani deployment bundling three levers. (1) Mine planning: software-based mine planning at a daily and weekly level to improve plan compliance and align operations across the value chain. (2) Blasting optimization: software-based blast design and data analytics to increase blasting efficiency and reduce cost. (3) Stock monitoring: drone and fixed-camera based ore stock monitoring and survey to improve ore tracking and transparency, addressing low visibility of multiple stockpiles that leads to pilferage and operational inefficiencies, and enabling regular reconciliation of ore stock."},
+
+"CENTRAL-1":{area:"Logistics & Freight (CMO)",desc:"Analyse and optimise iron ore freight to reduce logistics cost — evaluating routing, mode mix, rake utilisation and rate structures, and identifying data-driven opportunities to lower per-tonne freight."},
+"CENTRAL-2":{area:"Logistics & Freight (CMO)",desc:"Coal freight optimisation focused on base coal freight — analysing sourcing, routing and rake planning to reduce landed coal cost, with data-driven identification of high-cost lanes and improvement levers."},
+"CENTRAL-3":{area:"Logistics & Freight (CMO)",desc:"Coal freight optimisation focused on differential coal freight — analysing incremental and differential freight components across sources and routes to minimise avoidable cost."},
+"CENTRAL-4":{area:"Marketing / NSR (CMO)",desc:"Calculate, simulate and analyse NEP and rationalise Net Sales Realization (NSR) — modelling pricing and realisation scenarios across products and markets to support decisions that improve realisation."},
+"CENTRAL-5":{area:"Inventory / Value (CMO)",desc:"Minimise value leakage by reducing inventory ageing — tracking ageing stock, flagging slow-moving and at-risk inventory, and driving actions to liquidate and prevent value erosion."},
+"CENTRAL-6":{area:"Inventory (CMO)",desc:"Optimise inventory across the network — balancing stock levels against demand and service targets to reduce holding cost while avoiding stock-outs, using analytics for planning and replenishment."}
 };
 /* ============================================================
-   FIREBASE CONFIG  ——  PASTE YOUR PROJECT SETTINGS HERE
-   Firebase console → Project settings → General → "Your apps" → SDK setup
-   (databaseURL is required — Realtime Database, not Firestore)
+   SUPABASE CONFIG  ——  PASTE YOUR PROJECT SETTINGS HERE
+   Supabase dashboard → Project Settings → API
    ============================================================ */
-const FIREBASE_CONFIG = {
-  apiKey: "PASTE_API_KEY",
-  authDomain: "PASTE_PROJECT.firebaseapp.com",
-  databaseURL: "https://PASTE_PROJECT-default-rtdb.firebaseio.com",
-  projectId: "PASTE_PROJECT_ID"
-};
+const SUPABASE_URL = "https://zlocvbzlhvrukolpsgtx.supabase.co";   // Project URL
+const SUPABASE_KEY = "sb_publishable_tlcmVSS1mUKjUAJZD8P3EA_z4hHQ-5I";      // anon / publishable key (safe for the browser)
 
 const boardKey=id=>"boards/"+id;
 const bakKey=id=>"backups/"+id;
 const INDEX_PATH="index";
 const BACKUP_MAX=20;
 
+/* Optional: paste a Google Apps Script Web App /exec URL to send backups to one Drive folder.
+   Leave blank to download the backup file to your device instead. */
+const BACKUP_URL="";
+
 const STATUSES=[{k:"idle",label:"Not started"},{k:"active",label:"In progress"},{k:"done",label:"Done"},{k:"blocked",label:"Blocked"},{k:"hold",label:"On hold"}];
 const STATUS_ORDER=["idle","active","done","blocked","hold"];
 const BOX_KINDS=["Gate","Decision","Review","Risk","Dependency","Task","Note"];
 const DEFAULT_MILESTONES=["Data Collection","Initiative Start","Model Development","Cold Trials","Hot Trials","Go-Live","Performance Period Starts","Performance Period Ends","Handover"];
 
-let hasStore=false, db=null, boardUnsub=null, nav={}, currentId=null, activePlant="BSL", state=null, knownRev=0, myName="",
+let hasStore=false, sb=null, rtChannel=null, nav={}, currentId=null, activePlant="BSL", state=null, knownRev=0, myName="",
     isEditing=false, pendingRemote=null, backups=[], lastSaved=null,
-    openPlants=new Set(), boardCache={}, bakCache={}, lastPop=null, lastBackupAt="";
+    openPlants=new Set(), boardCache={}, bakCache={}, lastPop=null, lastBackupAt="", statusMap={}, ddOpen=false;
 let uid=Math.floor(Math.random()*1e6);
 const nextId=()=>(uid++).toString(36)+Date.now().toString(36).slice(-3);
 
@@ -358,11 +382,32 @@ function normBoard(b){b.milestones=toArr(b.milestones);b.milestones.forEach(m=>{
 function plantOf(id){for(const p of PLANTS)if((nav[p]||[]).some(u=>u.id===id))return p;return null;}
 function useCaseName(id){for(const p of PLANTS){const u=(nav[p]||[]).find(x=>x.id===id);if(u)return u.name;}return "Use case";}
 function findUC(id){return !!plantOf(id);}
+function currentStage(st){if(!st||!st.milestones)return null;let cur=-1;st.milestones.forEach((m,i)=>{if(m.status!=="idle")cur=i;});if(cur<0)return null;const m=st.milestones[cur];return {n:cur+1,name:m.name,status:m.status};}
+function navStatusText(id){const c=statusMap[id];return c?c.name:"not started";}
+async function loadAllStatuses(){
+  if(!sb) return;
+  const ids=[]; PLANTS.forEach(p=>(nav[p]||[]).forEach(u=>ids.push(u.id)));
+  await Promise.all(ids.map(async id=>{ const b=await sGet(boardKey(id)); if(b) statusMap[id]=currentStage(normBoard(b)); }));
+  renderNav();
+}
 
 /* ---------- Firebase Realtime Database ---------- */
-async function sGet(path){if(!db)return null;try{const snap=await db.ref(path).get();return snap.exists()?snap.val():null;}catch(e){return null;}}
-async function sSet(path,val){if(!db)return false;try{await db.ref(path).set(val);return true;}catch(e){return false;}}
-async function sDel(path){if(!db)return;try{await db.ref(path).remove();}catch(e){}}
+async function sGet(key){
+  if(!sb) return null;
+  try{ const {data,error}=await sb.from('state').select('data').eq('id',key).maybeSingle();
+       if(error) return null; return data?data.data:null; }
+  catch(e){ return null; }
+}
+async function sSet(key,val){
+  if(!sb) return false;
+  try{ const {error}=await sb.from('state').upsert({id:key,data:val,updated_at:new Date().toISOString()});
+       return !error; }
+  catch(e){ return false; }
+}
+async function sDel(key){
+  if(!sb) return;
+  try{ await sb.from('state').delete().eq('id',key); }catch(e){}
+}
 const storeGet=()=>sGet(boardKey(currentId));
 const storeSet=st=>sSet(boardKey(currentId),st);
 
@@ -415,6 +460,7 @@ async function save(){
   state.rev=(state.rev||0)+1; state.updatedAt=Date.now(); state.updatedBy=myName||"someone";
   knownRev=state.rev;
   render();
+  statusMap[currentId]=currentStage(state); renderNav();
   if(hasStore){setSync("saving");const ok=await storeSet(state);setSync(ok?"saved":"err");}
   else boardCache[currentId]=deep(state);
   lastSaved=deep(state);
@@ -425,7 +471,7 @@ async function openUseCase(id){
   let b = hasStore ? await sGet(boardKey(id)) : (boardCache[id]||null);
   if(!b){ b=freshState(useCaseName(id)); if(hasStore) await sSet(boardKey(id),b); else boardCache[id]=b; }
   else { b=normBoard(b); b.title=useCaseName(id); }   /* keep board title in step with nav name */
-  state=b; knownRev=b.rev||0; lastPop=null;
+  state=b; knownRev=b.rev||0; lastPop=null; statusMap[id]=currentStage(b);
   backups = hasStore ? toArr(await sGet(bakKey(id))) : (bakCache[id]||[]);
   lastSaved=deep(state);
   const p=plantOf(id); if(p){activePlant=p;openPlants.add(p);}
@@ -435,26 +481,28 @@ async function openUseCase(id){
 }
 function showBoard(on){document.getElementById("boardWrap").hidden=!on;document.getElementById("boardHint").hidden=on;}
 
-/* ---------- realtime sync ---------- */
-function detachBoard(){if(boardUnsub){boardUnsub();boardUnsub=null;}}
-function listenIndex(){
-  db.ref(INDEX_PATH).on("value",snap=>{
-    const v=snap.val(); if(!v) return;
-    const nn=normNav(v);
-    if(JSON.stringify(nn)!==JSON.stringify(nav)){nav=nn;renderNav();}
-  });
-}
-function listenBoard(id){
-  detachBoard();
-  const r=db.ref(boardKey(id));
-  const cb=r.on("value",snap=>{
-    const remote=snap.val(); if(!remote) return;
-    if((remote.rev||0)>(knownRev||0)){
-      if(isEditing){pendingRemote=remote;setSync("update-waiting");}
-      else adopt(remote);
-    }
-  });
-  boardUnsub=()=>r.off("value",cb);
+/* ---------- realtime sync (single Supabase channel for the whole 'state' table) ---------- */
+function detachBoard(){}          /* no per-board listener needed with the global channel */
+function listenBoard(){}
+function startRealtime(){
+  if(!sb) return;
+  if(rtChannel){ try{sb.removeChannel(rtChannel);}catch(e){} }
+  rtChannel=sb.channel("state-changes")
+    .on("postgres_changes",{event:"*",schema:"public",table:"state"},payload=>{
+      const row=payload.new||payload.old; if(!row||!row.id) return;
+      const id=row.id, val=payload.new?payload.new.data:null;
+      if(id===INDEX_PATH){
+        if(val){ const nn=normNav(val); if(JSON.stringify(nn)!==JSON.stringify(nav)){nav=nn;renderNav();} }
+      } else if(id.indexOf("boards/")===0 && val){
+        const ucId=id.slice(7);
+        statusMap[ucId]=currentStage(val); renderNav();
+        if(currentId && ucId===currentId && (val.rev||0)>(knownRev||0)){
+          if(isEditing){pendingRemote=val;setSync("update-waiting");}
+          else adopt(val);
+        }
+      }
+    })
+    .subscribe();
 }
 function adopt(remote){
   remote=normBoard(remote);
@@ -484,13 +532,21 @@ function renderNav(){
     return `<div class="tab${p===activePlant?" active":""}" data-tab="${p}">${p}<span class="cnt">${n}</span></div>`;
   }).join("");
   const list=nav[activePlant]||[];
-  const opts=[`<option value="">${list.length?`— select a use case (${list.length}) —`:"— no use cases yet, add one —"}</option>`]
-    .concat(list.map(uc=>`<option value="${uc.id}" ${uc.id===currentId?"selected":""}>${esc(uc.name)}</option>`)).join("");
+  const sel = currentId ? list.find(u=>u.id===currentId) : null;
+  const btnInner = sel
+    ? `<span class="ucn">${esc(sel.name)}</span><span class="ucs">${esc(navStatusText(sel.id))}</span>`
+    : `<span class="ph ucn">${list.length?`Select a use case (${list.length})`:"No use cases yet — add one"}</span>`;
+  const items = list.length
+    ? list.map(uc=>`<div class="uc-dd-item${uc.id===currentId?" active":""}" data-uc="${uc.id}"><span class="ucn">${esc(uc.name)}</span><span class="ucs">${esc(navStatusText(uc.id))}</span></div>`).join("")
+    : `<div class="uc-dd-empty">No use cases yet.</div>`;
   nv.innerHTML=`
     <div class="ribbon">${tabs}</div>
     <div class="planttools">
       <span class="lbl">${activePlant} &middot; Use case</span>
-      <select class="uc-select" data-role="ucselect">${opts}</select>
+      <div class="uc-dd${ddOpen?" open":""}" data-dd>
+        <button class="uc-dd-btn" data-dd-toggle>${btnInner}<span class="caret">&#9662;</span></button>
+        <div class="uc-dd-menu">${items}</div>
+      </div>
       <button class="mini" data-role="adduc">+ New</button>
       <div class="uc-addrow" data-addrow hidden><input type="text" data-addinput placeholder="New use case name — press Enter" maxlength="140"><button class="mini" data-role="addgo">Add</button></div>
     </div>`;
@@ -607,14 +663,13 @@ navEl.addEventListener("click",e=>{
     renderNav();
     return;
   }
+  if(e.target.closest("[data-dd-toggle]")){ ddOpen=!ddOpen; renderNav(); return; }
+  const item=e.target.closest("[data-uc]");
+  if(item){ ddOpen=false; openUseCase(item.dataset.uc); return; }
   const role=e.target.closest("[data-role]"); if(!role) return;
   const r=role.dataset.role;
   if(r==="adduc"){const row=navEl.querySelector("[data-addrow]");row.hidden=!row.hidden;if(!row.hidden){const i=row.querySelector("[data-addinput]");i.value="";i.focus();}}
   else if(r==="addgo"){const i=navEl.querySelector("[data-addinput]");if(i&&i.value.trim())addUseCase(activePlant,i.value);}
-});
-navEl.addEventListener("change",e=>{
-  const sel=e.target.closest("select[data-role=ucselect]"); if(!sel) return;
-  if(sel.value) openUseCase(sel.value);
 });
 navEl.addEventListener("keydown",e=>{
   const i=e.target.closest("[data-addinput]"); if(!i||e.key!=="Enter") return;
@@ -668,6 +723,7 @@ nameInput.addEventListener("input",()=>{myName=nameInput.value.trim();});
 
 function toast(msg){const t=document.getElementById("toast");t.textContent=msg;t.classList.add("show");clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove("show"),1700);}
 document.addEventListener("click",e=>{if(!e.target.closest(".slot")&&!e.target.closest(".picker"))document.querySelectorAll(".picker.open").forEach(p=>p.classList.remove("open"));});
+document.addEventListener("click",e=>{if(ddOpen&&!e.target.closest("[data-dd]")){ddOpen=false;renderNav();}});
 
 /* ---------- restore ---------- */
 /* ---------- Backup (export all data) ---------- */
@@ -679,16 +735,29 @@ async function doBackup(){
     if(hasStore){ const b=await sGet(boardKey(id)); if(b) data.boards[id]=b; const k=await sGet(bakKey(id)); if(k) data.backups[id]=k; }
     else { if(boardCache[id]) data.boards[id]=boardCache[id]; if(bakCache[id]) data.backups[id]=bakCache[id]; }
   }
-  const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
-  const a=document.createElement("a");
-  a.href=URL.createObjectURL(blob);
-  a.download="pravartanam-backup-"+stamp().replace(/[: ]/g,"-")+".json";
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(a.href);
+  const json=JSON.stringify(data,null,2);
+  if(BACKUP_URL){
+    try{
+      await fetch(BACKUP_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:json});
+      toast("Backup sent to Drive · "+data.at);
+    }catch(err){
+      // fall back to download if the endpoint is unreachable
+      downloadJson(json,data.at); toast("Couldn't reach Drive — downloaded instead");
+    }
+  } else {
+    downloadJson(json,data.at); toast("Backup saved · "+data.at);
+  }
   lastBackupAt=data.at;
   if(hasStore) await sSet("meta/lastBackup",data.at);
   updateBackupIndicator();
-  toast("Backup saved · "+data.at);
+}
+function downloadJson(json,at){
+  const blob=new Blob([json],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download="pravartanam-backup-"+(at||stamp()).replace(/[: ]/g,"-")+".json";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
 }
 
 /* ---------- Restore ---------- */
@@ -756,26 +825,21 @@ function mergeSeed(n){
   }
   return changed;
 }
-function initFirebase(){
-  const cfg=FIREBASE_CONFIG;
-  if(!window.firebase || !cfg.databaseURL || /PASTE/.test(cfg.apiKey+cfg.databaseURL)) return false;
-  try{
-    firebase.initializeApp(cfg);
-    db=firebase.database();
-    if(firebase.auth) firebase.auth().signInAnonymously().catch(()=>{});  /* works with auth!=null rules; harmless if rules are open */
-    return true;
-  }catch(e){ return false; }
+function initSupabase(){
+  if(!window.supabase || !SUPABASE_URL || !SUPABASE_KEY || /PASTE/.test(SUPABASE_URL+SUPABASE_KEY)) return false;
+  try{ sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY); return true; }
+  catch(e){ return false; }
 }
 function showSetupBanner(){}
 (async function boot(){
-  hasStore=initFirebase();
+  hasStore=initSupabase();
   const idx = hasStore ? await sGet(INDEX_PATH) : null;
   if(idx){ nav=normNav(idx); if(mergeSeed(nav)&&hasStore) await sSet(INDEX_PATH,nav); }
   else { nav=seedNav(); if(hasStore) await sSet(INDEX_PATH,nav); }   /* first load seeds from the file */
   if(hasStore){ const lb=await sGet("meta/lastBackup"); if(lb) lastBackupAt=lb; }
   updateBackupIndicator();
   renderNav();
-  if(hasStore) listenIndex();
+  if(hasStore){ startRealtime(); loadAllStatuses(); }
   const m=location.hash.match(/u=([^&]+)/);
   if(m){const id=decodeURIComponent(m[1]);if(findUC(id))await openUseCase(id);}
 })();
