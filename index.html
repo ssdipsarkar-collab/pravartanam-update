@@ -28,6 +28,20 @@
   .banner.solo{background:#FBF3E4;border:1px solid #ECD9B4;color:#7a5a1e}
   .banner b{font-weight:700}
 
+  .ticker{display:flex;align-items:center;gap:12px;border:1px solid var(--line);background:var(--card);border-radius:var(--radius);padding:8px 12px;margin-bottom:14px;overflow:hidden}
+  .ticker-label{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--steel);white-space:nowrap;flex:none;border-right:1px solid var(--line);padding-right:12px}
+  .ticker-view{flex:1;overflow:hidden}
+  .ticker-track{display:inline-flex;white-space:nowrap;will-change:transform;animation:ticker-scroll linear infinite}
+  .ticker:hover .ticker-track{animation-play-state:paused}
+  .ticker-track.still{animation:none}
+  .ticker-item{display:inline-flex;align-items:baseline;gap:6px;font-size:13px;color:var(--ink);padding:0 22px;position:relative}
+  .ticker-item::after{content:"•";position:absolute;right:0;color:var(--line)}
+  .ticker-item b{font-weight:700}
+  .ticker-item .tk-ctx{font-family:var(--mono);font-size:11px;color:var(--steel)}
+  .ticker-item .tk-t{font-family:var(--mono);font-size:11px;color:var(--idle)}
+  .ticker-empty{font-size:13px;color:var(--idle);font-style:italic}
+  @keyframes ticker-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
   /* plant ribbon (Excel-style sheet tabs) */
   #nav{margin-bottom:16px}
   .ribbon{display:flex;gap:3px;overflow-x:auto;padding:6px 2px 0;scrollbar-width:thin}
@@ -38,6 +52,11 @@
   .tab .cnt{font-weight:600;font-size:10px;color:var(--idle);margin-left:7px}
   .tab.active{background:var(--card);color:var(--steel-deep);border-color:var(--steel);border-top:3px solid var(--steel);padding-top:7px;z-index:2}
   .tab.active .cnt{color:var(--steel)}
+  .tab.stale{background:#F6DCDA;color:var(--blocked);border-color:#E3A9A3}
+  .tab.stale:hover{background:#F0CEC9;color:var(--blocked)}
+  .tab.stale .cnt{color:var(--blocked)}
+  .tab.stale.active{background:var(--card);color:var(--blocked);border-color:var(--blocked);border-top:3px solid var(--blocked)}
+  .tab.stale.active .cnt{color:var(--blocked)}
   .planttools{border:1px solid var(--steel);border-top:none;background:var(--card);border-radius:0 0 var(--radius) var(--radius);
        padding:14px 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;position:relative;top:-1px}
   .planttools .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--idle)}
@@ -51,6 +70,11 @@
   .uc-dd-item{display:flex;align-items:center;gap:16px;padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--line-soft)}
   .uc-dd-item:last-child{border-bottom:none}
   .uc-dd-item:hover{background:#EFF4F6}
+  .uc-dd-item.stale:not(.active){background:#FCF3F2}
+  .uc-dd-item.stale:not(.active):hover{background:#F7E7E5}
+  .uc-dd-item.stale:not(.active) .ucn{color:var(--blocked)}
+  .uc-dd-btn.stale{border-color:#E3A9A3}
+  .uc-dd-btn.stale .ucn{color:var(--blocked)}
   .uc-dd-item.active{background:var(--steel);color:#fff}
   .uc-dd .ucn{flex:1;min-width:0}
   .uc-dd .ucs{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--idle);white-space:nowrap;text-align:right}
@@ -188,6 +212,11 @@
     <h1 class="apptitle">Pravartanam Use Case Update Tracker</h1>
   </header>
 
+  <div class="ticker" id="ticker" hidden>
+    <span class="ticker-label">Recent changes &middot; 7 days</span>
+    <div class="ticker-view"><div class="ticker-track" id="tickerTrack"></div></div>
+  </div>
+
   <div id="nav"></div>
 
   <div class="boardhint" id="boardHint">Select a use case from a plant above to open its update tree.</div>
@@ -197,15 +226,9 @@
       <span class="dotstat" id="dotstat"></span>
       <span class="sync" id="sync">—</span>
       <span class="sep"></span>
-      <span class="bkstat" id="bkstat">No backup yet</span>
-      <button class="linkbtn" id="backupBtn">Backup</button>
-      <button class="linkbtn" id="restoreBtn">Restore</button>
-      <input type="file" id="restoreFile" accept="application/json,.json" hidden>
       <label class="nl" for="editorName">You are</label>
       <input class="name" id="editorName" type="text" placeholder="your name" maxlength="24" spellcheck="false">
     </div>
-
-    <div class="restore-panel" id="restorePanel" hidden></div>
 
     <header class="top">
       <p class="eyebrow" id="plantTag">—</p>
@@ -235,7 +258,9 @@
    Falls back to in-session single-user mode if Supabase isn't configured.
    ============================================================ */
 
-const PLANTS=["BSL","BSP","DSP","RSP","ISP","MINES","CENTRAL"];
+const PLANTS=["BSL","BSP","DSP","RSP","ISP","MINES","CENTRAL","EDGE"];
+const PLANT_LABEL={EDGE:"EDGE Infra"};
+const plantLabel=p=>PLANT_LABEL[p]||p;
 
 /* Use cases seeded from all_target_value_use_case.docx (plant mapping inferred from mill identifiers) */
 const SEED={
@@ -295,7 +320,8 @@ const SEED={
     "NEP Calculation, Simulation & Analysis — NSR Rationalization",
     "Value Leakage Minimization — Reduce Inventory Ageing",
     "Inventory Optimization"
-  ]
+  ],
+  EDGE:["BSL","BSP","ISP","DSP","RSP","RANCHI"]
 };
 function seedNav(){const n=normNav(null);for(const p of PLANTS){(SEED[p]||[]).forEach((name,i)=>n[p].push({id:`${p}-${i+1}`,name}));}return n;}
 
@@ -344,7 +370,14 @@ const DETAILS={
 "CENTRAL-3":{area:"Logistics & Freight (CMO)",desc:"Coal freight optimisation focused on differential coal freight — analysing incremental and differential freight components across sources and routes to minimise avoidable cost."},
 "CENTRAL-4":{area:"Marketing / NSR (CMO)",desc:"Calculate, simulate and analyse NEP and rationalise Net Sales Realization (NSR) — modelling pricing and realisation scenarios across products and markets to support decisions that improve realisation."},
 "CENTRAL-5":{area:"Inventory / Value (CMO)",desc:"Minimise value leakage by reducing inventory ageing — tracking ageing stock, flagging slow-moving and at-risk inventory, and driving actions to liquidate and prevent value erosion."},
-"CENTRAL-6":{area:"Inventory (CMO)",desc:"Optimise inventory across the network — balancing stock levels against demand and service targets to reduce holding cost while avoiding stock-outs, using analytics for planning and replenishment."}
+"CENTRAL-6":{area:"Inventory (CMO)",desc:"Optimise inventory across the network — balancing stock levels against demand and service targets to reduce holding cost while avoiding stock-outs, using analytics for planning and replenishment."},
+
+"EDGE-1":{area:"Edge Infrastructure",desc:"Edge computing infrastructure deployment at BSL, tracked through the TS Stage and Stage 1 & Stage 2 approvals."},
+"EDGE-2":{area:"Edge Infrastructure",desc:"Edge computing infrastructure deployment at BSP, tracked through the TS Stage and Stage 1 & Stage 2 approvals."},
+"EDGE-3":{area:"Edge Infrastructure",desc:"Edge computing infrastructure deployment at ISP, tracked through the TS Stage and Stage 1 & Stage 2 approvals."},
+"EDGE-4":{area:"Edge Infrastructure",desc:"Edge computing infrastructure deployment at DSP, tracked through the TS Stage and Stage 1 & Stage 2 approvals."},
+"EDGE-5":{area:"Edge Infrastructure",desc:"Edge computing infrastructure deployment at RSP, tracked through the TS Stage and Stage 1 & Stage 2 approvals."},
+"EDGE-6":{area:"Edge Infrastructure",desc:"Edge computing infrastructure deployment at Ranchi, tracked through the TS Stage and Stage 1 & Stage 2 approvals."}
 };
 /* ============================================================
    SUPABASE CONFIG  ——  PASTE YOUR PROJECT SETTINGS HERE
@@ -366,10 +399,13 @@ const STATUSES=[{k:"idle",label:"Not started"},{k:"active",label:"In progress"},
 const STATUS_ORDER=["idle","active","done","blocked","hold"];
 const BOX_KINDS=["Gate","Decision","Review","Risk","Dependency","Task","Note"];
 const DEFAULT_MILESTONES=["Data Collection","Initiative Start","Model Development","Cold Trials","Hot Trials","Go-Live","Performance Period Starts","Performance Period Ends","Handover"];
+const EDGE_MILESTONES=["TS Stage","Stage 1 Approval","Stage 2 Approval"];
+const milestonesFor=plant=>plant==="EDGE"?EDGE_MILESTONES:DEFAULT_MILESTONES;
 
 let hasStore=false, sb=null, rtChannel=null, nav={}, currentId=null, activePlant="BSL", state=null, knownRev=0, myName="",
     isEditing=false, pendingRemote=null, backups=[], lastSaved=null,
-    openPlants=new Set(), boardCache={}, bakCache={}, lastPop=null, lastBackupAt="", statusMap={}, ddOpen=false;
+    openPlants=new Set(), boardCache={}, bakCache={}, lastPop=null, lastBackupAt="", statusMap={}, updateTsMap={}, ddOpen=false,
+    activity=[], activityLocal=[];
 let uid=Math.floor(Math.random()*1e6);
 const nextId=()=>(uid++).toString(36)+Date.now().toString(36).slice(-3);
 
@@ -414,10 +450,60 @@ function mergeBoardUpdates(base,other){
 }
 function navStatusText(id){const c=statusMap[id];return c?c.name:"not started";}
 function navStatusClass(id){const c=statusMap[id];return c?c.status:"idle";}
+/* ---------- staleness: once a use case has started (any milestone moved off "Not started")
+   it shows RED, and only a POSTED UPDATE clears it. Status changes do NOT count — after the
+   case has started, red is cleared only by adding an update, and it returns 3 days after the
+   last update. Use cases that have not started at all stay their normal colour. ---------- */
+const STALE_MS=3*24*3600*1000;
+function updatesTsMax(list){
+  const arr=Array.isArray(list)?list:(list&&typeof list==="object"?Object.keys(list).map(k=>list[k]):[]);
+  let mx=0; arr.forEach(u=>{const t=parseTs(u&&u.t); if(t>mx)mx=t;}); return mx;
+}
+function lastUpdateTs(board){
+  if(!board) return 0;
+  let mx=0;
+  const ms=Array.isArray(board.milestones)?board.milestones:(board.milestones?Object.keys(board.milestones).map(k=>board.milestones[k]):[]);
+  ms.forEach(m=>{const t=updatesTsMax(m&&m.updates); if(t>mx)mx=t;});
+  const bx=Array.isArray(board.boxes)?board.boxes:(board.boxes?Object.keys(board.boxes).map(k=>board.boxes[k]):[]);
+  bx.forEach(b=>{const t=updatesTsMax(b&&b.updates); if(t>mx)mx=t;});
+  return mx;
+}
+function isStaleUC(id){
+  const c=statusMap[id];                        // current stage (null when not started)
+  if(!c) return false;                          // not started at all → normal colour
+  const ts=updateTsMap[id]||0;                  // freshness comes ONLY from posted updates
+  return ts===0 || (Date.now()-ts)>STALE_MS;    // red once started, until an update is posted; red again 3 days later
+}
+function isStalePlant(p){return (nav[p]||[]).some(u=>isStaleUC(u.id));}
+/* ---------- recent-changes ticker (last 7 days) ---------- */
+function parseTs(s){const m=/(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/.exec(s||"");return m?new Date(+m[1],+m[2]-1,+m[3],+m[4],+m[5]).getTime():0;}
+function trimActivity(list){const cut=Date.now()-7*24*3600*1000;return (list||[]).filter(e=>parseTs(e.t)>=cut).slice(0,300);}
+async function logActivity(text){
+  if(!currentId) return;
+  const ev={t:stamp(),by:myName||"someone",plant:plantOf(currentId)||"",uc:useCaseName(currentId),text:text};
+  let list = hasStore ? (await sGet("activity")) : activityLocal;
+  list = Array.isArray(list)?list:[];
+  list.unshift(ev); list=trimActivity(list);
+  activity=list;
+  if(hasStore) await sSet("activity",list); else activityLocal=list;
+  renderTicker();
+}
+function renderTicker(){
+  const box=document.getElementById("ticker"), track=document.getElementById("tickerTrack");
+  if(!box||!track) return;
+  const items=trimActivity(activity);
+  box.hidden=false;
+  if(!items.length){ track.className="ticker-track still"; track.innerHTML=`<span class="ticker-empty">No changes in the last 7 days.</span>`; return; }
+  const html=items.map(e=>`<span class="ticker-item"><b>${esc(e.by||"someone")}</b> <span class="tk-ctx">${esc(plantLabel(e.plant)||"")}${e.uc?" / "+esc(e.uc):""}</span> ${esc(e.text)} <span class="tk-t">${esc(e.t)}</span></span>`).join("");
+  const many=items.length>2;
+  track.className="ticker-track"+(many?"":" still");
+  track.innerHTML = many ? (html+html) : html;   /* duplicate for seamless loop only when scrolling */
+  if(many){ track.style.animationDuration=Math.max(20,items.length*4)+"s"; }
+}
 async function loadAllStatuses(){
   if(!sb) return;
   const ids=[]; PLANTS.forEach(p=>(nav[p]||[]).forEach(u=>ids.push(u.id)));
-  await Promise.all(ids.map(async id=>{ const b=await sGet(boardKey(id)); if(b) statusMap[id]=currentStage(normBoard(b)); }));
+  await Promise.all(ids.map(async id=>{ const b=await sGet(boardKey(id)); if(b){ const nb=normBoard(b); statusMap[id]=currentStage(nb); updateTsMap[id]=lastUpdateTs(nb); } }));
   renderNav();
 }
 
@@ -464,34 +550,23 @@ function deleteUseCase(plant,id){
 function renameUseCase(id,name){mutateIndex(n=>{for(const p of PLANTS){const u=(n[p]||[]).find(x=>x.id===id);if(u){u.name=name;break;}}});}
 
 /* ---------- state model ---------- */
-function freshState(title){
+function freshState(title,plant){
   return {v:1,rev:0,updatedAt:Date.now(),updatedBy:"",
     title:title||"Untitled Use Case",
     meta:{programme:"Pravartanam",owner:"",domain:"",ref:""},
-    milestones:DEFAULT_MILESTONES.map((n,i)=>({id:"m"+(i+1),name:n,status:"idle",updates:[]})),
+    milestones:milestonesFor(plant).map((n,i)=>({id:"m"+(i+1),name:n,status:"idle",updates:[]})),
     boxes:[],delU:[]};
 }
-
-/* ---------- backups ---------- */
-async function pushBackup(snap){
-  if(hasStore){const latest=await sGet(bakKey(currentId));if(Array.isArray(latest))backups=latest;}
-  backups.unshift(snap);
-  if(backups.length>BACKUP_MAX) backups.length=BACKUP_MAX;
-  if(hasStore) await sSet(bakKey(currentId),backups); else bakCache[currentId]=backups;
-  updateBackupIndicator();
-}
-function updateBackupIndicator(){const el=document.getElementById("bkstat");if(el)el.textContent=lastBackupAt?("Last backup: "+lastBackupAt):"No backup yet";}
 
 /* ---------- save / navigation ---------- */
 function syncHash(){try{history.replaceState(null,"","#u="+encodeURIComponent(currentId||""));}catch(e){}}
 async function save(){
   if(!currentId) return;
   if(hasStore){ const remote=await storeGet(); if(remote) mergeBoardUpdates(state,normBoard(remote)); }  /* preserve others' updates */
-  if(lastSaved){await pushBackup({t:fmtTs(lastSaved.updatedAt),by:lastSaved.updatedBy||"—",rev:lastSaved.rev||0,data:lastSaved});}
   state.rev=(state.rev||0)+1; state.updatedAt=Date.now(); state.updatedBy=myName||"someone";
   knownRev=state.rev;
   render();
-  statusMap[currentId]=currentStage(state); renderNav();
+  statusMap[currentId]=currentStage(state); updateTsMap[currentId]=lastUpdateTs(state); renderNav();
   if(hasStore){setSync("saving");const ok=await storeSet(state);setSync(ok?"saved":"err");}
   else boardCache[currentId]=deep(state);
   lastSaved=deep(state);
@@ -500,13 +575,12 @@ async function openUseCase(id){
   if(!findUC(id)) return;
   currentId=id;
   let b = hasStore ? await sGet(boardKey(id)) : (boardCache[id]||null);
-  if(!b){ b=freshState(useCaseName(id)); if(hasStore) await sSet(boardKey(id),b); else boardCache[id]=b; }
+  if(!b){ b=freshState(useCaseName(id),plantOf(id)); if(hasStore) await sSet(boardKey(id),b); else boardCache[id]=b; }
   else { b=normBoard(b); b.title=useCaseName(id); }   /* keep board title in step with nav name */
-  state=b; knownRev=b.rev||0; lastPop=null; statusMap[id]=currentStage(b);
-  backups = hasStore ? toArr(await sGet(bakKey(id))) : (bakCache[id]||[]);
+  state=b; knownRev=b.rev||0; lastPop=null; statusMap[id]=currentStage(b); updateTsMap[id]=lastUpdateTs(b);
   lastSaved=deep(state);
   const p=plantOf(id); if(p){activePlant=p;openPlants.add(p);}
-  syncHash(); showBoard(true); renderNav(); render(); updateBackupIndicator(); setSync("saved");
+  syncHash(); showBoard(true); renderNav(); render(); setSync("saved");
   if(hasStore) listenBoard(id);
   document.getElementById("boardWrap").scrollIntoView({behavior:"smooth",block:"start"});
 }
@@ -522,11 +596,12 @@ function startRealtime(){
     .on("postgres_changes",{event:"*",schema:"public",table:"state"},payload=>{
       const row=payload.new||payload.old; if(!row||!row.id) return;
       const id=row.id, val=payload.new?payload.new.data:null;
+      if(id==="activity"){ activity=Array.isArray(val)?val:[]; renderTicker(); return; }
       if(id===INDEX_PATH){
         if(val){ const nn=normNav(val); if(JSON.stringify(nn)!==JSON.stringify(nav)){nav=nn;renderNav();} }
       } else if(id.indexOf("boards/")===0 && val){
         const ucId=id.slice(7);
-        statusMap[ucId]=currentStage(val); renderNav();
+        statusMap[ucId]=currentStage(val); updateTsMap[ucId]=lastUpdateTs(val); renderNav();
         if(currentId && ucId===currentId && (val.rev||0)>(knownRev||0)){
           if(isEditing){pendingRemote=val;setSync("update-waiting");}
           else adopt(val);
@@ -539,7 +614,7 @@ function adopt(remote){
   remote=normBoard(remote);
   if(state) mergeBoardUpdates(remote,state);   /* keep our updates too */
   state=remote; knownRev=remote.rev||0; pendingRemote=null; lastSaved=deep(state); lastPop=null;
-  render(); setSync("saved"); updateBackupIndicator();
+  render(); setSync("saved");
   toast("Updated by "+(remote.updatedBy||"a collaborator"));
 }
 
@@ -561,22 +636,24 @@ function renderNav(){
   const nv=document.getElementById("nav");
   const tabs=PLANTS.map(p=>{
     const n=(nav[p]||[]).length;
-    return `<div class="tab${p===activePlant?" active":""}" data-tab="${p}">${p}<span class="cnt">${n}</span></div>`;
+    const st=isStalePlant(p)?" stale":"";
+    return `<div class="tab${p===activePlant?" active":""}${st}" data-tab="${p}">${esc(plantLabel(p))}<span class="cnt">${n}</span></div>`;
   }).join("");
   const list=nav[activePlant]||[];
+  const noun = activePlant==="EDGE" ? "plant" : "use case";
   const sel = currentId ? list.find(u=>u.id===currentId) : null;
   const btnInner = sel
     ? `<span class="ucn">${esc(sel.name)}</span><span class="ucs s-${navStatusClass(sel.id)}">${esc(navStatusText(sel.id))}</span>`
-    : `<span class="ph ucn">${list.length?`Select a use case (${list.length})`:"No use cases yet — add one"}</span>`;
+    : `<span class="ph ucn">${list.length?`Select a ${noun} (${list.length})`:`No ${noun}s yet — add one`}</span>`;
   const items = list.length
-    ? list.map(uc=>`<div class="uc-dd-item${uc.id===currentId?" active":""}" data-uc="${uc.id}"><span class="ucn">${esc(uc.name)}</span><span class="ucs s-${navStatusClass(uc.id)}">${esc(navStatusText(uc.id))}</span></div>`).join("")
+    ? list.map(uc=>`<div class="uc-dd-item${uc.id===currentId?" active":""}${isStaleUC(uc.id)?" stale":""}" data-uc="${uc.id}"><span class="ucn">${esc(uc.name)}</span><span class="ucs s-${navStatusClass(uc.id)}">${esc(navStatusText(uc.id))}</span></div>`).join("")
     : `<div class="uc-dd-empty">No use cases yet.</div>`;
   nv.innerHTML=`
     <div class="ribbon">${tabs}</div>
     <div class="planttools">
-      <span class="lbl">${activePlant} &middot; Use case</span>
+      <span class="lbl">${esc(plantLabel(activePlant))} &middot; ${activePlant==="EDGE"?"Plant":"Use case"}</span>
       <div class="uc-dd${ddOpen?" open":""}" data-dd>
-        <button class="uc-dd-btn" data-dd-toggle>${btnInner}<span class="caret">&#9662;</span></button>
+        <button class="uc-dd-btn${sel&&isStaleUC(sel.id)?" stale":""}" data-dd-toggle>${btnInner}<span class="caret">&#9662;</span></button>
         <div class="uc-dd-menu">${items}</div>
       </div>
       <button class="mini" data-role="adduc">+ New</button>
@@ -590,7 +667,7 @@ function render(){
   const p=plantOf(currentId);
   const det=DETAILS[currentId];
   const area=det?det.area:"";
-  document.getElementById("plantTag").textContent=(p||"")+(area?" \u00b7 "+area:(p?" \u00b7 Use case":"Use case"));
+  document.getElementById("plantTag").textContent=(p?plantLabel(p):"")+(area?" \u00b7 "+area:(p?(p==="EDGE"?" \u00b7 Plant":" \u00b7 Use case"):"Use case"));
   document.getElementById("title").textContent=state.title||"Untitled Use Case";
 
   const ud=document.getElementById("ucDetails");
@@ -693,6 +770,7 @@ navEl.addEventListener("click",e=>{
         try{history.replaceState(null,"",location.pathname+location.search);}catch(err){}
       }
     }
+    ddOpen=true;                         /* auto-open the use-case list on tab click */
     renderNav();
     return;
   }
@@ -713,8 +791,8 @@ navEl.addEventListener("keydown",e=>{
 const spine=document.getElementById("spine");
 spine.addEventListener("click",e=>{
   const t=e.target.closest("[data-act]"); if(!t) return; const a=t.dataset.act;
-  if(a==="cycle"){const m=findM(t.dataset.id);m.status=STATUS_ORDER[(STATUS_ORDER.indexOf(m.status)+1)%STATUS_ORDER.length];save();}
-  else if(a==="cycle-box"){const b=findB(t.dataset.id);b.status=STATUS_ORDER[(STATUS_ORDER.indexOf(b.status)+1)%STATUS_ORDER.length];save();}
+  if(a==="cycle"){const m=findM(t.dataset.id);m.status=STATUS_ORDER[(STATUS_ORDER.indexOf(m.status)+1)%STATUS_ORDER.length];save();logActivity(m.name+" → "+statusLabel(m.status));}
+  else if(a==="cycle-box"){const b=findB(t.dataset.id);b.status=STATUS_ORDER[(STATUS_ORDER.indexOf(b.status)+1)%STATUS_ORDER.length];save();logActivity(b.title+" → "+statusLabel(b.status));}
   else if(a==="show-picker"){const p=document.querySelector(`.picker[data-picker="${t.dataset.after}"]`);document.querySelectorAll(".picker.open").forEach(x=>{if(x!==p)x.classList.remove("open");});p.classList.toggle("open");}
   else if(a==="add-box"){state.boxes.push({id:"x"+nextId(),after:parseInt(t.dataset.after,10),kind:t.dataset.kind,title:t.dataset.kind+" — untitled",status:"idle",text:"",updates:[]});save();}
   else if(a==="del-box"){state.boxes=state.boxes.filter(b=>b.id!==t.dataset.id);save();}
@@ -727,7 +805,7 @@ function commitUpdateFromInput(inp){
   const val=inp.value.trim(); if(!val) return;
   const [scope,id]=inp.dataset.input.split(/-(.+)/);
   const it=scope==="m"?findM(id):findB(id); if(!it) return;
-  it.updates.unshift({id:"u"+nextId(),t:stamp(),text:val,by:myName||""}); save();
+  it.updates.unshift({id:"u"+nextId(),t:stamp(),text:val,by:myName||""}); save(); logActivity("update: "+val);
 }
 spine.addEventListener("keydown",e=>{
   const inp=e.target.closest("input[data-input]"); if(!inp||e.key!=="Enter") return;
@@ -746,9 +824,11 @@ spine.addEventListener("blur",e=>{
 },true);
 spine.addEventListener("change",e=>{
   const s=e.target.closest("select[data-edit]"); if(!s) return;
-  if(s.dataset.edit==="status")findM(s.dataset.id).status=s.value;
-  else if(s.dataset.edit==="box-status")findB(s.dataset.id).status=s.value;
+  let it=null;
+  if(s.dataset.edit==="status"){it=findM(s.dataset.id);it.status=s.value;}
+  else if(s.dataset.edit==="box-status"){it=findB(s.dataset.id);it.status=s.value;}
   save();
+  if(it) logActivity((it.name||it.title)+" → "+statusLabel(s.value));
 });
 
 const titleEl=document.getElementById("title");
@@ -761,98 +841,8 @@ nameInput.addEventListener("input",()=>{myName=nameInput.value.trim();});
 
 function toast(msg){const t=document.getElementById("toast");t.textContent=msg;t.classList.add("show");clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove("show"),1700);}
 document.addEventListener("click",e=>{if(!e.target.closest(".slot")&&!e.target.closest(".picker"))document.querySelectorAll(".picker.open").forEach(p=>p.classList.remove("open"));});
-document.addEventListener("click",e=>{if(ddOpen&&!e.target.closest("[data-dd]")){ddOpen=false;renderNav();}});
+document.addEventListener("click",e=>{if(ddOpen&&!e.target.closest("[data-dd]")&&!e.target.closest("[data-tab]")){ddOpen=false;renderNav();}});
 
-/* ---------- restore ---------- */
-/* ---------- Backup (export all data) ---------- */
-async function doBackup(){
-  toast("Preparing backup…");
-  const ids=[]; PLANTS.forEach(p=>(nav[p]||[]).forEach(u=>ids.push(u.id)));
-  const data={app:"pravartanam-tracker",version:1,at:stamp(),index:nav,boards:{},backups:{}};
-  for(const id of ids){
-    if(hasStore){ const b=await sGet(boardKey(id)); if(b) data.boards[id]=b; const k=await sGet(bakKey(id)); if(k) data.backups[id]=k; }
-    else { if(boardCache[id]) data.boards[id]=boardCache[id]; if(bakCache[id]) data.backups[id]=bakCache[id]; }
-  }
-  const json=JSON.stringify(data,null,2);
-  if(BACKUP_URL){
-    try{
-      await fetch(BACKUP_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:json});
-      toast("Backup sent to Drive · "+data.at);
-    }catch(err){
-      // fall back to download if the endpoint is unreachable
-      downloadJson(json,data.at); toast("Couldn't reach Drive — downloaded instead");
-    }
-  } else {
-    downloadJson(json,data.at); toast("Backup saved · "+data.at);
-  }
-  lastBackupAt=data.at;
-  if(hasStore) await sSet("meta/lastBackup",data.at);
-  updateBackupIndicator();
-}
-function downloadJson(json,at){
-  const blob=new Blob([json],{type:"application/json"});
-  const a=document.createElement("a");
-  a.href=URL.createObjectURL(blob);
-  a.download="pravartanam-backup-"+(at||stamp()).replace(/[: ]/g,"-")+".json";
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(a.href);
-}
-
-/* ---------- Restore ---------- */
-async function openRestore(){
-  const panel=document.getElementById("restorePanel");
-  if(!panel.hidden){panel.hidden=true;return;}
-  if(hasStore){const b=await sGet(bakKey(currentId));if(Array.isArray(b))backups=b;}
-  renderRestore(); panel.hidden=false;
-}
-function renderRestore(){
-  const panel=document.getElementById("restorePanel");
-  const head=`<h4>Backup &amp; Restore</h4>
-    <div class="rmeta" style="margin-bottom:8px">Last backup: <b>${lastBackupAt?esc(lastBackupAt):"none yet"}</b></div>
-    <div class="restore-row" style="border-top:none;padding-top:0">
-      <span class="rmeta" style="flex:1">Restore everything from a downloaded backup file</span>
-      <button class="mini" data-restore-file>Restore from file…</button>
-    </div>`;
-  let pts;
-  if(!backups.length){
-    pts=`<div class="restore-empty">No recovery points yet for this use case — one is captured automatically before each change.</div>`;
-  } else {
-    pts=backups.map((s,i)=>`<div class="restore-row"><span class="rmeta"><b>${esc(s.t)}</b> &middot; ${esc(s.by||"—")} &middot; rev ${s.rev}${i===0?" &middot; most recent":""}</span><button class="mini" data-restore="${i}">Restore this</button></div>`).join("");
-  }
-  panel.innerHTML=`${head}<div class="dh" style="margin:10px 0 4px">Recovery points for this use case${backups.length?" &middot; "+backups.length+" kept":""}</div>${pts}`;
-}
-document.getElementById("backupBtn").addEventListener("click",doBackup);
-document.getElementById("restoreBtn").addEventListener("click",openRestore);
-document.getElementById("restorePanel").addEventListener("click",e=>{
-  if(e.target.closest("[data-restore-file]")){ document.getElementById("restoreFile").click(); return; }
-  const b=e.target.closest("[data-restore]"); if(!b) return;
-  const snap=backups[parseInt(b.dataset.restore,10)]; if(!snap) return;
-  if(confirm(`Restore this use case to the recovery point from ${snap.t}? The current board is backed up first, so this is undoable too.`)){
-    state=deep(snap.data); save();
-    document.getElementById("restorePanel").hidden=true; toast("Restored from "+snap.t);
-  }
-});
-document.getElementById("restoreFile").addEventListener("change",async e=>{
-  const file=e.target.files&&e.target.files[0]; e.target.value="";
-  if(!file) return;
-  let data; try{ data=JSON.parse(await file.text()); }catch(err){ toast("Couldn't read that backup file"); return; }
-  if(!data||!data.index||!data.boards){ toast("Not a valid backup file"); return; }
-  if(!confirm(`Restore the whole tracker from the backup taken ${data.at||"(unknown date)"}? This replaces the current plants, use cases and update trees for everyone.`)) return;
-  nav=normNav(data.index);
-  if(hasStore){
-    await sSet(INDEX_PATH,nav);
-    for(const id in data.boards){ await sSet(boardKey(id),data.boards[id]); }
-    for(const id in (data.backups||{})){ await sSet(bakKey(id),data.backups[id]); }
-  } else {
-    boardCache={}; bakCache={};
-    for(const id in data.boards){ boardCache[id]=data.boards[id]; }
-    for(const id in (data.backups||{})){ bakCache[id]=data.backups[id]; }
-  }
-  currentId=null; state=null; backups=[]; detachBoard();
-  document.getElementById("restorePanel").hidden=true;
-  showBoard(false); renderNav();
-  toast("Restored from backup "+(data.at||""));
-});
 
 /* ============================================================ BOOT */
 function mergeSeed(n){
@@ -874,9 +864,10 @@ function showSetupBanner(){}
   const idx = hasStore ? await sGet(INDEX_PATH) : null;
   if(idx){ nav=normNav(idx); if(mergeSeed(nav)&&hasStore) await sSet(INDEX_PATH,nav); }
   else { nav=seedNav(); if(hasStore) await sSet(INDEX_PATH,nav); }   /* first load seeds from the file */
-  if(hasStore){ const lb=await sGet("meta/lastBackup"); if(lb) lastBackupAt=lb; }
-  updateBackupIndicator();
+  if(hasStore){ const a=await sGet("activity"); activity=Array.isArray(a)?a:[]; }
+  renderTicker();
   renderNav();
+  setInterval(()=>{ if(!ddOpen) renderNav(); },600000);   /* recheck staleness every 10 min */
   if(hasStore){ startRealtime(); loadAllStatuses(); }
   const m=location.hash.match(/u=([^&]+)/);
   if(m){const id=decodeURIComponent(m[1]);if(findUC(id))await openUseCase(id);}
