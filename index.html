@@ -28,20 +28,6 @@
   .banner.solo{background:#FBF3E4;border:1px solid #ECD9B4;color:#7a5a1e}
   .banner b{font-weight:700}
 
-  .ticker{display:flex;align-items:center;gap:12px;border:1px solid var(--line);background:var(--card);border-radius:var(--radius);padding:8px 12px;margin-bottom:14px;overflow:hidden}
-  .ticker-label{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--steel);white-space:nowrap;flex:none;border-right:1px solid var(--line);padding-right:12px}
-  .ticker-view{flex:1;overflow:hidden}
-  .ticker-track{display:inline-flex;white-space:nowrap;will-change:transform;animation:ticker-scroll linear infinite}
-  .ticker:hover .ticker-track{animation-play-state:paused}
-  .ticker-track.still{animation:none}
-  .ticker-item{display:inline-flex;align-items:baseline;gap:6px;font-size:13px;color:var(--ink);padding:0 22px;position:relative}
-  .ticker-item::after{content:"•";position:absolute;right:0;color:var(--line)}
-  .ticker-item b{font-weight:700}
-  .ticker-item .tk-ctx{font-family:var(--mono);font-size:11px;color:var(--steel)}
-  .ticker-item .tk-t{font-family:var(--mono);font-size:11px;color:var(--idle)}
-  .ticker-empty{font-size:13px;color:var(--idle);font-style:italic}
-  @keyframes ticker-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
-
   /* plant ribbon (Excel-style sheet tabs) */
   #nav{margin-bottom:16px}
   .ribbon{display:flex;gap:3px;overflow-x:auto;padding:6px 2px 0;scrollbar-width:thin}
@@ -212,11 +198,6 @@
     <h1 class="apptitle">Pravartanam Use Case Update Tracker</h1>
   </header>
 
-  <div class="ticker" id="ticker" hidden>
-    <span class="ticker-label">Recent changes &middot; 7 days</span>
-    <div class="ticker-view"><div class="ticker-track" id="tickerTrack"></div></div>
-  </div>
-
   <div id="nav"></div>
 
   <div class="boardhint" id="boardHint">Select a use case from a plant above to open its update tree.</div>
@@ -228,6 +209,7 @@
       <span class="sep"></span>
       <label class="nl" for="editorName">You are</label>
       <input class="name" id="editorName" type="text" placeholder="your name" maxlength="24" spellcheck="false">
+      <button class="linkbtn" id="btnReport" type="button" title="Download a Word summary of this use case">&#8681; Download report</button>
     </div>
 
     <header class="top">
@@ -249,6 +231,8 @@
 
 <!-- Supabase JS client -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- JSZip: used to build the downloadable Word (.docx) report in the browser -->
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
 <script>
 /* ============================================================
@@ -838,6 +822,98 @@ titleEl.addEventListener("focusout",()=>setTimeout(()=>{isEditing=false;if(pendi
 
 const nameInput=document.getElementById("editorName");
 nameInput.addEventListener("input",()=>{myName=nameInput.value.trim();});
+
+/* ============================================================ WORD (.docx) REPORT
+   Builds a brief summary + all updates for the open use case, entirely in the browser,
+   and downloads it as a real .docx (minimal OOXML packaged with JSZip). */
+function xmlEsc(s){return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+function wRun(text,o){
+  o=o||{}; const r=[];
+  if(o.b) r.push("<w:b/>");
+  if(o.i) r.push("<w:i/>");
+  if(o.color) r.push(`<w:color w:val="${o.color}"/>`);
+  if(o.sz) r.push(`<w:sz w:val="${o.sz}"/><w:szCs w:val="${o.sz}"/>`);
+  const rpr=r.length?`<w:rPr>${r.join("")}</w:rPr>`:"";
+  return `<w:r>${rpr}<w:t xml:space="preserve">${xmlEsc(text)}</w:t></w:r>`;
+}
+function wPara(runs,o){
+  o=o||{}; const pp=[];
+  if(o.bar) pp.push(`<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="6" w:color="D3D9DE"/></w:pBdr>`);
+  if(o.before!=null||o.after!=null) pp.push(`<w:spacing${o.before!=null?` w:before="${o.before}"`:""}${o.after!=null?` w:after="${o.after}"`:""}/>`);
+  const ppr=pp.length?`<w:pPr>${pp.join("")}</w:pPr>`:"";
+  return `<w:p>${ppr}${Array.isArray(runs)?runs.join(""):runs}</w:p>`;
+}
+function reportUpdateLine(u){
+  const meta=`${u.t||""}${u.by?"  \u00b7  "+u.by:""}`;
+  return wPara([wRun("\u2022  ",{}),wRun(meta+" \u2014 ",{color:"5A6472"}),wRun(u.text||"")],{after:20});
+}
+function buildReportXml(){
+  const st=state, id=currentId, p=plantOf(id), det=DETAILS[id], pa=[];
+  pa.push(wPara(wRun(st.title||"Untitled Use Case",{b:true,sz:36}),{after:40}));
+  const sub=[plantLabel(p||""),det?det.area:"","Programme: "+((st.meta&&st.meta.programme)||"Pravartanam")].filter(Boolean).join("    |    ");
+  pa.push(wPara(wRun(sub,{color:"5A6472",sz:20}),{after:120,bar:true}));
+
+  let done=0,cur=-1;
+  st.milestones.forEach((m,i)=>{if(m.status==="done")done++;if(m.status!=="idle")cur=i;});
+  const curTxt=cur>=0?`Stage ${cur+1} \u2014 ${st.milestones[cur].name} (${statusLabel(st.milestones[cur].status)})`:"Not started";
+  pa.push(wPara([wRun("Current stage:  ",{b:true}),wRun(curTxt)],{before:120}));
+  pa.push(wPara([wRun("Progress:  ",{b:true}),wRun(`${done} of ${st.milestones.length} stages done`)],{after:80}));
+
+  if(det&&det.desc){
+    pa.push(wPara(wRun("Brief summary",{b:true,sz:26}),{before:180,after:60}));
+    pa.push(wPara(wRun(det.desc),{after:100}));
+  }
+
+  pa.push(wPara(wRun("Updates",{b:true,sz:26}),{before:180,after:60}));
+  let any=false;
+  st.milestones.forEach((m,i)=>{
+    const ups=shownUpdates(m); if(!ups.length) return; any=true;
+    pa.push(wPara([wRun(`Stage ${i+1}: ${m.name}  `,{b:true}),wRun(`(${statusLabel(m.status)})`,{color:"5A6472"})],{before:120,after:40}));
+    ups.forEach(u=>pa.push(reportUpdateLine(u)));
+  });
+  (st.boxes||[]).forEach(b=>{
+    const ups=shownUpdates(b); if(!ups.length) return; any=true;
+    pa.push(wPara([wRun(`${b.kind}: ${b.title}  `,{b:true}),wRun(`(${statusLabel(b.status)})`,{color:"5A6472"})],{before:120,after:40}));
+    ups.forEach(u=>pa.push(reportUpdateLine(u)));
+  });
+  if(!any) pa.push(wPara(wRun("No updates recorded yet.",{i:true,color:"9AA3AB"})));
+
+  pa.push(wPara(wRun("Generated "+stamp()+"  \u00b7  Pravartanam Use Case Update Tracker",{i:true,color:"9AA3AB",sz:18}),{before:220,bar:true}));
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+    `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>`+
+    pa.join("")+
+    `<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="709" w:footer="709" w:gutter="0"/></w:sectPr>`+
+    `</w:body></w:document>`;
+}
+const DOCX_CONTENT_TYPES=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+  `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">`+
+  `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>`+
+  `<Default Extension="xml" ContentType="application/xml"/>`+
+  `<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>`+
+  `</Types>`;
+const DOCX_RELS=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+  `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`+
+  `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>`+
+  `</Relationships>`;
+async function downloadReport(){
+  if(!currentId||!state){toast("Open a use case first");return;}
+  if(!window.JSZip){toast("Report library still loading \u2014 try again in a moment");return;}
+  try{
+    const zip=new JSZip();
+    zip.file("[Content_Types].xml",DOCX_CONTENT_TYPES);
+    zip.folder("_rels").file(".rels",DOCX_RELS);
+    zip.folder("word").file("document.xml",buildReportXml());
+    const blob=await zip.generateAsync({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document"});
+    const safe=(state.title||"use-case").replace(/[^\w\-]+/g,"_").replace(/^_+|_+$/g,"").slice(0,60)||"use-case";
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob); a.download=safe+"_report.docx";
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1500);
+    toast("Report downloaded");
+  }catch(err){ toast("Couldn't build the report"); }
+}
+document.getElementById("btnReport").addEventListener("click",downloadReport);
 
 function toast(msg){const t=document.getElementById("toast");t.textContent=msg;t.classList.add("show");clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove("show"),1700);}
 document.addEventListener("click",e=>{if(!e.target.closest(".slot")&&!e.target.closest(".picker"))document.querySelectorAll(".picker.open").forEach(p=>p.classList.remove("open"));});
